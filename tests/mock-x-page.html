@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ContextReply Mock X Page</title>
+    <link rel="stylesheet" href="../content.css">
+    <style>
+      body {
+        max-width: 680px;
+        margin: 32px auto;
+        color: #0f1419;
+        font-family: Arial, sans-serif;
+      }
+
+      article,
+      .home-composer {
+        border: 1px solid rgb(207, 217, 222);
+        border-radius: 8px;
+        margin-bottom: 16px;
+        padding: 16px;
+      }
+
+      [contenteditable="true"] {
+        min-height: 80px;
+        margin-top: 16px;
+        border: 1px solid rgb(207, 217, 222);
+        border-radius: 8px;
+        padding: 12px;
+      }
+
+      .label { font-size: 12px; color: #536471; }
+      [data-testid="trend"] { font-size: 13px; color: #536471; }
+    </style>
+  </head>
+  <body>
+    <!-- Top-level compose box (no post precedes it => compose surface) -->
+    <div class="home-composer">
+      <p class="label">Home compose box</p>
+      <div data-testid="tweetTextarea_0" role="textbox" contenteditable="true" aria-label="Post text"></div>
+      <div data-testid="toolBar"></div>
+    </div>
+
+    <!-- Fake trends sidebar -->
+    <div aria-label="Timeline: Trending now">
+      <div data-testid="trend">Technology · Trending<br>GPT-5.4<br>48.2K posts</div>
+      <div data-testid="trend">Trending<br>AI agents<br>12.1K posts</div>
+    </div>
+
+    <!-- Reply contexts -->
+    <article>
+      <p>AI agents fail less often when the task starts with requirements, non-goals, and a verification loop.</p>
+      <div data-testid="tweetTextarea_0" role="textbox" contenteditable="true" aria-label="First post text"></div>
+      <div data-testid="toolBar"></div>
+    </article>
+
+    <article>
+      <p>Most AI replies sound generic because they optimize for speed instead of having something specific to add.</p>
+      <div data-testid="tweetTextarea_0" role="textbox" contenteditable="true" aria-label="Second post text"></div>
+      <div data-testid="toolBar"></div>
+    </article>
+
+    <script>
+      const listeners = [];
+      let generationMode = "success";
+
+      const replyResult = {
+        relevance_gate: {
+          mention_product: true,
+          reason: "The thread is about agent workflow quality.",
+          mention_style: "Personal example, not promotion."
+        },
+        options: [
+          { label: "helpful", text: "the useful part is making the task concrete before the agent starts changing files." },
+          { label: "question", text: "what do you use as the verification step before calling the agent result done?" },
+          { label: "direct", text: "the prompt matters, but the spec and review loop usually matter more." }
+        ]
+      };
+
+      const postResult = {
+        options: [
+          { label: "hook", text: "everyone benchmarks token cost. nobody benchmarks how many hours you lose deciding what the agent should even do." },
+          { label: "take", text: "the gpt-5.4 launch is cool but the bottleneck was never the model, it was me not writing down what good looks like." },
+          { label: "story", text: "watched my feed argue about agents all morning and realized the people shipping just have tighter specs, not better prompts." }
+        ]
+      };
+
+      let refineCounter = 0;
+      window.chrome = {
+        runtime: {
+          sendMessage: async (message) => {
+            if (generationMode === "missing-key") {
+              return {
+                ok: false,
+                error: "Add your OpenAI API key in the ContextReply extension settings."
+              };
+            }
+
+            if (message.type === "contextreply.compose") {
+              return { ok: true, result: postResult };
+            }
+
+            if (message.type === "contextreply.refine") {
+              refineCounter += 1;
+              return { ok: true, result: { text: `${message.currentText} [${message.instruction}] (v${refineCounter})` } };
+            }
+
+            return { ok: true, result: replyResult };
+          },
+          onMessage: {
+            addListener: (listener) => {
+              listeners.push(listener);
+            }
+          }
+        }
+      };
+
+      window.__contextReplyTest = {
+        triggerShortcut() {
+          for (const listener of listeners) {
+            listener({ type: "contextreply.shortcut" });
+          }
+        },
+        useMissingKeyError() {
+          generationMode = "missing-key";
+        },
+        forceClipboardFailure() {
+          Object.defineProperty(navigator, "clipboard", {
+            configurable: true,
+            value: {
+              writeText: async () => {
+                throw new Error("Forced clipboard failure.");
+              }
+            }
+          });
+          document.execCommand = (command) => command !== "copy";
+        }
+      };
+    </script>
+    <script src="../content.js"></script>
+  </body>
+</html>

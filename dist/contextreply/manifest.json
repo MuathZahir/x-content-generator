@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "ContextReply",
+  "description": "A human-in-the-loop X reply copilot that uses your context only when relevant.",
+  "version": "0.1.0",
+  "permissions": ["storage", "clipboardWrite", "tabs"],
+  "host_permissions": ["https://api.openai.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "ContextReply",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "commands": {
+    "suggest-replies": {
+      "suggested_key": {
+        "default": "Alt+Shift+R"
+      },
+      "description": "Suggest replies for the active X composer"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ContextReply Settings</title>
+    <link rel="stylesheet" href="ui.css">
+  </head>
+  <body class="settings-body">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <span class="brand-dot"></span>
+          <span class="brand-name">ContextReply</span>
+          <span class="brand-tag">settings</span>
+        </div>
+        <nav class="topbar-links">
+          <a href="docs/profile-guide.md" target="_blank">Profile guide</a>
+          <a href="docs/x-safety-guide.md" target="_blank">Safety</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="settings">
+      <section class="intro">
+        <h1>Your reply profile</h1>
+        <p class="muted">Everything below stays in this browser's local extension storage. When you click <strong>Suggest replies</strong>, ContextReply sends the visible post (and any post images) plus this profile to OpenAI — and nothing else.</p>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Connection</h2>
+          <p class="card-sub">Your key and the model used for generation.</p>
+        </div>
+
+        <div class="field">
+          <label for="apiKey">OpenAI API key</label>
+          <input id="apiKey" type="password" autocomplete="off" placeholder="sk-...">
+          <p class="field-note">Stored locally in this browser. Profile exports omit the key. Revoke and replace any key that was pasted into chat, email, or a shared document.</p>
+        </div>
+
+        <div class="field">
+          <label for="model">Model</label>
+          <select id="model">
+            <option value="gpt-5.4">gpt-5.4 — best quality + vision (recommended)</option>
+            <option value="gpt-5.4-mini">gpt-5.4-mini — faster, cheaper</option>
+            <option value="gpt-4.1">gpt-4.1</option>
+            <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+            <option value="gpt-4o">gpt-4o</option>
+            <option value="gpt-4o-mini">gpt-4o-mini</option>
+          </select>
+          <p class="field-note">All listed models can read images attached to a post.</p>
+        </div>
+
+        <div class="field toggle-field">
+          <label class="switch" for="feedGrounding">
+            <input id="feedGrounding" type="checkbox">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+            <span class="switch-label">Ground new posts in my home feed</span>
+          </label>
+          <p class="field-note">When writing a new post, sends the text of the posts currently visible in your home feed (plus trends and today's date) to OpenAI, so drafts reference what is actually happening. Turn off to send only your idea.</p>
+        </div>
+
+        <div class="field toggle-field">
+          <label class="switch" for="webSearch">
+            <input id="webSearch" type="checkbox">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+            <span class="switch-label">Search the web for current events</span>
+          </label>
+          <p class="field-note">Lets the model look things up on the web while writing new posts, for current developments beyond your feed. Slower and costs more per post.</p>
+        </div>
+
+        <div class="field toggle-field">
+          <label class="switch" for="mockMode">
+            <input id="mockMode" type="checkbox">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+            <span class="switch-label">Use mock replies for local QA</span>
+          </label>
+          <p id="mockModeNote" class="field-note hidden">Mock mode uses local sample replies and does not call OpenAI.</p>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Who you are</h2>
+          <p class="card-sub">The model writes as you. The sharper this is, the better the replies.</p>
+        </div>
+        <div class="field">
+          <label for="profile">Context profile</label>
+          <textarea id="profile" rows="9" placeholder="Who you are, what you build, the opinions you hold..."></textarea>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Products &amp; projects</h2>
+          <p class="card-sub">Separate each with a blank line. Only mentioned when a post is genuinely relevant.</p>
+        </div>
+        <div class="field">
+          <label for="products">Products and projects</label>
+          <textarea id="products" rows="8" placeholder="Project name&#10;- what it does&#10;- when it is relevant to mention"></textarea>
+        </div>
+      </section>
+
+      <div class="card-grid">
+        <section class="card">
+          <div class="card-head"><h2>Voice</h2></div>
+          <div class="field">
+            <label for="voice">Writing examples and tone</label>
+            <textarea id="voice" rows="7" placeholder="Tone, example phrasings, how you actually talk..."></textarea>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head"><h2>Forbidden</h2></div>
+          <div class="field">
+            <label for="forbidden">Forbidden phrases or behaviors</label>
+            <textarea id="forbidden" rows="7" placeholder="One phrase per line to ban from replies..."></textarea>
+          </div>
+        </section>
+      </div>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Never sound like this</h2>
+          <p class="card-sub">Anti-examples. The model avoids this posture and style.</p>
+        </div>
+        <div class="field">
+          <label for="badExamples">Never sound like this</label>
+          <textarea id="badExamples" rows="6" placeholder="Paste cringe replies you never want to write..."></textarea>
+        </div>
+      </section>
+    </main>
+
+    <footer class="actionbar">
+      <div class="actionbar-inner">
+        <span id="status" role="status"></span>
+        <div class="actionbar-buttons">
+          <button id="resetDefaults" type="button" class="secondary">Reset defaults</button>
+          <button id="export" type="button" class="secondary">Export</button>
+          <label class="button secondary" for="importFile">Import</label>
+          <input id="importFile" class="file-input" type="file" accept="application/json">
+          <button id="save" type="button" class="primary">Save</button>
+        </div>
+      </div>
+    </footer>
+
+    <script src="options.js"></script>
+  </body>
+</html>

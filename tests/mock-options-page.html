@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ContextReply Mock Settings</title>
+    <link rel="stylesheet" href="../ui.css">
+  </head>
+  <body>
+    <main class="settings">
+      <header>
+        <h1>ContextReply</h1>
+        <p class="muted">Mock settings page for local browser QA.</p>
+        <p class="muted"><a href="../docs/profile-guide.md" target="_blank">Profile guide</a></p>
+        <p class="muted"><a href="../docs/x-safety-guide.md" target="_blank">X safety guide</a></p>
+      </header>
+
+      <section>
+        <label for="apiKey">OpenAI API key</label>
+        <input id="apiKey" type="password" autocomplete="off" placeholder="sk-...">
+        <p class="field-note">Stored locally in this browser. Profile exports omit the key. Revoke and replace any key that was pasted into chat, email, or a shared document.</p>
+      </section>
+
+      <section>
+        <label for="model">Model</label>
+        <input id="model" type="text" value="gpt-4.1-mini">
+      </section>
+
+      <section class="inline-setting">
+        <input id="mockMode" type="checkbox">
+        <label for="mockMode">Use mock replies for local QA</label>
+      </section>
+      <p id="mockModeNote" class="field-note hidden">Mock mode uses local sample replies and does not call OpenAI.</p>
+
+      <section>
+        <label for="profile">Context profile</label>
+        <textarea id="profile" rows="10"></textarea>
+      </section>
+
+      <section>
+        <label for="products">Products and projects</label>
+        <textarea id="products" rows="8"></textarea>
+      </section>
+
+      <section>
+        <label for="voice">Writing examples and tone</label>
+        <textarea id="voice" rows="7"></textarea>
+      </section>
+
+      <section>
+        <label for="forbidden">Forbidden phrases or behaviors</label>
+        <textarea id="forbidden" rows="6"></textarea>
+      </section>
+
+      <section>
+        <label for="badExamples">Never sound like this</label>
+        <textarea id="badExamples" rows="6"></textarea>
+      </section>
+
+      <div class="actions">
+        <button id="save" type="button">Save</button>
+        <button id="resetDefaults" type="button" class="secondary">Reset defaults</button>
+        <button id="export" type="button" class="secondary">Export</button>
+        <label class="button secondary" for="importFile">Import</label>
+        <input id="importFile" class="file-input" type="file" accept="application/json">
+        <span id="status" role="status"></span>
+      </div>
+    </main>
+
+    <script>
+      const storageKey = "contextreply-mock-storage";
+      window.chrome = {
+        storage: {
+          local: {
+            async get(defaults) {
+              return { ...defaults, ...JSON.parse(localStorage.getItem(storageKey) || "{}") };
+            },
+            async set(next) {
+              localStorage.setItem(storageKey, JSON.stringify(next));
+            }
+          }
+        }
+      };
+    </script>
+    <script src="../options.js"></script>
+  </body>
+</html>
