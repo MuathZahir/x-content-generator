@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const packageDir = path.join("dist", "contextreply");
+const packageDir = path.join("dist", "penn-ai");
 const requiredFiles = [
   "manifest.json",
   "background.js",
@@ -33,7 +33,7 @@ const requiredFiles = [
 ];
 
 assert.ok(fs.existsSync(packageDir), "Run npm run package before package integrity check.");
-assert.ok(fs.existsSync(path.join("dist", "contextreply.zip")), "Missing dist/contextreply.zip.");
+assert.ok(fs.existsSync(path.join("dist", "penn-ai.zip")), "Missing dist/penn-ai.zip.");
 
 for (const file of requiredFiles) {
   assert.ok(fs.existsSync(path.join(packageDir, file)), `Missing packaged file: ${file}`);

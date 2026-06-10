@@ -160,8 +160,8 @@ function matchesSelector(element, selector) {
 }
 
 function matchesSingle(element, selector) {
-  if (selector === ".contextreply-preview pre") {
-    return element.tagName === "PRE" && element.parentElement?.className.includes("contextreply-preview");
+  if (selector === ".pennai-preview pre") {
+    return element.tagName === "PRE" && element.parentElement?.className.includes("pennai-preview");
   }
   if (selector === "article") return element.tagName === "ARTICLE";
   if (selector === '[data-testid="toolBar"]') return element.attributes["data-testid"] === "toolBar";
@@ -178,18 +178,18 @@ function matchesSingle(element, selector) {
 
 function parsePanelHtml(parent) {
   const row = parent.appendChild(new Element("div"));
-  row.className = "contextreply-row";
+  row.className = "pennai-row";
   const select = row.appendChild(new Element("select"));
   select.value = "Add technical insight";
   const button = row.appendChild(new Element("button"));
   button.textContent = "Suggest replies";
   const details = parent.appendChild(new Element("details"));
-  details.className = "contextreply-preview";
+  details.className = "pennai-preview";
   const summary = details.appendChild(new Element("summary"));
   summary.textContent = "Context sent";
   details.appendChild(new Element("pre"));
   const output = parent.appendChild(new Element("div"));
-  output.className = "contextreply-output";
+  output.className = "pennai-output";
 }
 
 function addComposer(label, text) {
@@ -267,32 +267,32 @@ const secondComposer = addComposer("Second post text", "Generic replies are easy
 
 vm.runInThisContext(fs.readFileSync("content.js", "utf8"));
 
-assert.equal(document.querySelectorAll(".contextreply-panel").length, 1);
+assert.equal(document.querySelectorAll(".pennai-panel").length, 1);
 scan();
 scan();
-assert.equal(document.querySelectorAll(".contextreply-panel").length, 1);
+assert.equal(document.querySelectorAll(".pennai-panel").length, 1);
 
-const panel = document.querySelectorAll(".contextreply-panel")[0];
-assert.ok(panel.className.split(/\s+/).includes("contextreply-floating"));
+const panel = document.querySelectorAll(".pennai-panel")[0];
+assert.ok(panel.className.split(/\s+/).includes("pennai-floating"));
 
 secondComposer.focus();
-runtimeListener({ type: "contextreply.shortcut" });
+runtimeListener({ type: "pennai.shortcut" });
 
 setImmediate(async () => {
-  assert.equal(document.body.querySelectorAll(".contextreply-option").length, 3);
+  assert.equal(document.body.querySelectorAll(".pennai-option").length, 3);
 
-  const copyButton = document.body.querySelectorAll(".contextreply-option-actions")[1].querySelectorAll("button")[1];
+  const copyButton = document.body.querySelectorAll(".pennai-option-actions")[1].querySelectorAll("button")[1];
   await copyButton.eventListeners.click[0]();
   assert.equal(global.copiedText, "What is your done criteria?");
 
   navigator.clipboard.writeText = async () => {
     throw new Error("Forced failure.");
   };
-  const failingCopyButton = document.body.querySelectorAll(".contextreply-option-actions")[2].querySelectorAll("button")[1];
+  const failingCopyButton = document.body.querySelectorAll(".pennai-option-actions")[2].querySelectorAll("button")[1];
   await failingCopyButton.eventListeners.click[0]();
   assert.match(document.body.innerText, /Copy failed/);
 
-  const insertButton = document.body.querySelector(".contextreply-option-actions").querySelector("button");
+  const insertButton = document.body.querySelector(".pennai-option-actions").querySelector("button");
   insertButton.click();
   assert.equal(secondComposer.textContent, "Make the task concrete first.");
 

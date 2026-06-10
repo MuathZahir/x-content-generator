@@ -1,13 +1,14 @@
 {
-  "name": "contextreply",
-  "version": "0.1.0",
+  "name": "penn-ai",
+  "version": "1.0.0",
   "private": true,
-  "description": "A human-in-the-loop X reply copilot Chrome extension.",
+  "description": "A human-in-the-loop X reply copilot Chrome extension with a hosted generation API.",
   "scripts": {
-    "validate": "node --check options.js && node --check content.js && node --check background.js && node --check scripts/openai-smoke.js && node --check scripts/package-extension.js && node --check scripts/package-integrity-test.js && node --check scripts/safety-audit.js && node --check scripts/content-dom-test.js && node --check scripts/options-dom-test.js && node --check scripts/background-test.js && node --check scripts/docs-link-test.js && node scripts/validate.js && node scripts/safety-audit.js && node scripts/content-dom-test.js && node scripts/options-dom-test.js && node scripts/background-test.js && node scripts/docs-link-test.js",
+    "validate": "node --check options.js && node --check content.js && node --check background.js && node --check popup.js && node --check scripts/api-smoke.js && node --check scripts/package-extension.js && node --check scripts/package-integrity-test.js && node --check scripts/safety-audit.js && node --check scripts/content-dom-test.js && node --check scripts/options-dom-test.js && node --check scripts/background-test.js && node --check scripts/docs-link-test.js && node scripts/validate.js && node scripts/safety-audit.js && node scripts/content-dom-test.js && node scripts/options-dom-test.js && node scripts/background-test.js && node scripts/docs-link-test.js",
     "test:package": "node scripts/package-integrity-test.js",
     "package": "node scripts/package-extension.js",
-    "release:check": "npm run validate && npm run package && npm run test:package",
-    "smoke:openai": "node scripts/openai-smoke.js"
+    "release:check": "npm run validate && npm run server:check && npm run package && npm run test:package",
+    "server:check": "cd server && npm run check",
+    "smoke:api": "node scripts/api-smoke.js"
   }
 }

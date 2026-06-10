@@ -1,6 +1,6 @@
 # Release Checklist
 
-Use this checklist before calling ContextReply ready for real users.
+Use this checklist before calling penn AI ready for real users.
 
 The live testing steps for unchecked items are documented in `docs/live-qa-playbook.md`.
 
@@ -30,7 +30,7 @@ The live testing steps for unchecked items are documented in `docs/live-qa-playb
 - [ ] Copy action is tested on X/HTTPS.
 - [x] Clipboard failure state is tested or deliberately accepted as residual risk.
 - [ ] Live OpenAI generation is tested with a valid API key.
-- [x] `npm run package` creates `dist/contextreply.zip`.
+- [x] `npm run package` creates `dist/penn-ai.zip`.
 - [x] Package integrity is checked with `npm run test:package`.
 - [x] Documentation links are checked in `npm run validate`.
 

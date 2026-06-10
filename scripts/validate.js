@@ -2,18 +2,18 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const {
-  buildMessages,
-  buildPostInput,
+  API_BASE,
+  buildProfilePayload,
   enforceReplyPolicy,
-  extractResponsesText,
-  formatUserContext,
+  formatProductBlock,
   generateMockPost,
   generateMockReplies,
-  parseRefineResult,
-  parseReplyResult,
-  selectRelevantProducts,
-  stripJsonFence
+  getProductsText,
+  sanitizeReplyText,
+  violatesReplyPolicy
 } = require("../background.js");
+
+// --- Manifest -------------------------------------------------------------------
 
 const manifest = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
 const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
@@ -24,6 +24,11 @@ assert.ok(manifest.permissions.includes("clipboardWrite"));
 assert.ok(manifest.permissions.includes("tabs"));
 assert.ok(!manifest.permissions.includes("activeTab"));
 assert.equal(manifest.commands["suggest-replies"].suggested_key.default, "Alt+Shift+R");
+
+// The extension talks only to the hosted API; no provider hosts, no provider
+// keys, anywhere in the client.
+const apiOrigin = new URL(API_BASE).origin;
+assert.deepEqual(manifest.host_permissions, [`${apiOrigin}/*`]);
 
 const referencedFiles = [
   manifest.background.service_worker,
@@ -46,17 +51,46 @@ for (const htmlFile of ["popup.html", "options.html", "tests/mock-x-page.html", 
   }
 }
 
-assert.match(fs.readFileSync("tests/mock-x-page.html", "utf8"), /Add your OpenAI API key in the ContextReply extension settings/);
+// --- No client-side provider keys -------------------------------------------------
+
+const backgroundSource = fs.readFileSync("background.js", "utf8");
+assert.doesNotMatch(backgroundSource, /api\.openai\.com/, "client must never call OpenAI directly");
+assert.doesNotMatch(backgroundSource, /apiKey/, "client must never handle a provider key");
+assert.match(backgroundSource, /Bearer \$\{token\}/, "hosted API uses the account token");
 
 const optionsSource = fs.readFileSync("options.js", "utf8");
-assert.match(optionsSource, /delete exported\.apiKey/);
+assert.doesNotMatch(optionsSource, /apiKey/);
+assert.match(optionsSource, /refreshAccount/);
 assert.match(optionsSource, /syncMockModeNote/);
 assert.match(optionsSource, /resetDefaults/);
-assert.match(fs.readFileSync("options.html", "utf8"), /Profile exports omit the key/);
-assert.match(fs.readFileSync("options.html", "utf8"), /Revoke and replace any key/);
+
+const popupSource = fs.readFileSync("popup.js", "utf8");
+assert.match(popupSource, /pennai\.signin/);
+assert.match(popupSource, /pennai\.account/);
+
+assert.match(fs.readFileSync("options.html", "utf8"), /the model key lives on the server/);
 assert.match(fs.readFileSync("options.html", "utf8"), /does not call OpenAI/);
 assert.match(fs.readFileSync("options.html", "utf8"), /Reset defaults/);
+assert.match(fs.readFileSync("popup.html", "utf8"), /Continue with Google/);
 assert.match(fs.readFileSync("popup.html", "utf8"), /X safety guide/);
+assert.match(fs.readFileSync("tests/mock-x-page.html", "utf8"), /Sign in to penn AI/);
+
+// --- Server parity: the load-bearing prompt phrases live server-side now ---------
+
+const serverPrompts = fs.readFileSync("server/src/prompts.js", "utf8");
+assert.match(serverPrompts, /product\/project field contains a genuinely relevant match/);
+assert.match(serverPrompts, /never sound like this/i);
+assert.match(serverPrompts, /contrast \/ antithesis flip/i);
+assert.match(serverPrompts, /Never sound like these examples/);
+assert.ok(fs.existsSync("server/src/index.js"));
+assert.ok(fs.existsSync("server/src/auth.js"));
+assert.ok(fs.existsSync("server/test/server-test.js"));
+const serverIndex = fs.readFileSync("server/src/index.js", "utf8");
+assert.match(serverIndex, /OPENAI|openai/, "provider calls live server-side");
+assert.match(fs.readFileSync("server/src/openai.js", "utf8"), /process\.env\.OPENAI_API_KEY/);
+
+// --- Docs ------------------------------------------------------------------------
+
 assert.ok(fs.existsSync("docs/release-checklist.md"));
 assert.ok(fs.existsSync("docs/architecture.md"));
 assert.ok(fs.existsSync("docs/chrome-store-listing.md"));
@@ -74,7 +108,7 @@ assert.match(fs.readFileSync("docs/architecture.md", "utf8"), /Data Flow/);
 assert.match(fs.readFileSync("docs/chrome-store-listing.md", "utf8"), /Permission justification/);
 assert.match(fs.readFileSync("docs/completion-audit.md", "utf8"), /Remaining Gaps/);
 assert.match(fs.readFileSync("docs/developer-guide.md", "utf8"), /npm run release:check/);
-assert.match(fs.readFileSync("docs/hosted-api-contract.md", "utf8"), /POST \/api\/replies\/generate/);
+assert.match(fs.readFileSync("docs/hosted-api-contract.md", "utf8"), /POST \/v1\/generate/);
 assert.match(fs.readFileSync("docs/profile-guide.md", "utf8"), /Never sound like this/);
 assert.match(fs.readFileSync("docs/live-qa-playbook.md", "utf8"), /authenticated X/i);
 assert.match(fs.readFileSync("docs/risk-register.md", "utf8"), /X\/Twitter DOM changes/);
@@ -86,7 +120,9 @@ const contentSource = fs.readFileSync("content.js", "utf8");
 assert.match(contentSource, /document\.execCommand\("copy"\)/);
 assert.match(contentSource, /Copy failed/);
 
-assert.match(packageJson.scripts.validate, /scripts\/openai-smoke\.js/);
+// --- Scripts wiring -----------------------------------------------------------
+
+assert.match(packageJson.scripts.validate, /scripts\/api-smoke\.js/);
 assert.match(packageJson.scripts.validate, /scripts\/package-extension\.js/);
 assert.match(packageJson.scripts.validate, /scripts\/package-integrity-test\.js/);
 assert.match(packageJson.scripts.validate, /scripts\/safety-audit\.js/);
@@ -96,8 +132,9 @@ assert.match(packageJson.scripts.validate, /scripts\/background-test\.js/);
 assert.match(packageJson.scripts.validate, /scripts\/docs-link-test\.js/);
 assert.equal(packageJson.scripts.package, "node scripts/package-extension.js");
 assert.equal(packageJson.scripts["test:package"], "node scripts/package-integrity-test.js");
-assert.equal(packageJson.scripts["release:check"], "npm run validate && npm run package && npm run test:package");
-assert.equal(packageJson.scripts["smoke:openai"], "node scripts/openai-smoke.js");
+assert.equal(packageJson.scripts["release:check"], "npm run validate && npm run server:check && npm run package && npm run test:package");
+assert.equal(packageJson.scripts["smoke:api"], "node scripts/api-smoke.js");
+assert.match(fs.readFileSync("scripts/package-extension.js", "utf8"), /popup\.js/);
 assert.match(fs.readFileSync("scripts/package-extension.js", "utf8"), /docs\/profile-guide\.md/);
 assert.match(fs.readFileSync("scripts/package-extension.js", "utf8"), /docs\/architecture\.md/);
 assert.match(fs.readFileSync("scripts/package-extension.js", "utf8"), /docs\/live-qa-playbook\.md/);
@@ -106,27 +143,7 @@ assert.match(fs.readFileSync("scripts/package-extension.js", "utf8"), /docs\/ris
 assert.match(fs.readFileSync("scripts/package-extension.js", "utf8"), /docs\/x-safety-guide\.md/);
 assert.match(fs.readFileSync("scripts/package-extension.js", "utf8"), /CHANGELOG\.md/);
 
-assert.equal(stripJsonFence("```json\n{\"ok\":true}\n```"), "{\"ok\":true}");
-
-const valid = parseReplyResult(JSON.stringify({
-  relevance_gate: {
-    mention_product: false,
-    reason: "Unrelated to the user's products.",
-    mention_style: "Do not mention a product."
-  },
-  options: [
-    { label: "Helpful", text: "The missing piece is usually the verification loop." },
-    { label: "Question", text: "How are you deciding what counts as done?" },
-    { label: "Concise", text: "Specs matter more than prompt cleverness here." }
-  ]
-}));
-
-assert.equal(valid.options.length, 3);
-assert.throws(() => parseReplyResult("{}"), /relevance gate/);
-assert.throws(() => parseReplyResult(JSON.stringify({
-  relevance_gate: { mention_product: false },
-  options: [{ label: "Only", text: "Too few." }]
-})), /3 to 5/);
+// --- Behavior spot checks (client-side guards) -----------------------------------
 
 const settings = {
   profile: "Builder focused on agent workflows.",
@@ -136,124 +153,41 @@ const settings = {
   badExamples: "Great point! Everyone needs to 10x their workflow."
 };
 
-const context = formatUserContext(settings);
-assert.match(context, /Most relevant saved products\/projects/);
-assert.match(context, /No saved product\/project/);
+const payload = buildProfilePayload(settings);
+assert.equal(payload.context, settings.profile);
+assert.match(payload.products, /Spec tool/);
 
-const relevantProducts = selectRelevantProducts(
-  "Spec tool\n- Requirements and verification workflows.\n\nRecipe app\n- Meal planning and grocery lists.",
-  "AI agents need requirements and verification before coding."
+assert.equal(
+  getProductsText({ productList: [{ name: "Tool", description: "Desc", mention: "tool threads" }] }),
+  "Tool\nDesc\nMention only when: tool threads"
 );
-assert.match(relevantProducts, /Spec tool/);
-assert.doesNotMatch(relevantProducts, /Recipe app/);
-
-const messages = buildMessages({
-  note: "be a bit sarcastic",
-  threadText: "AI coding agents fail when tasks are vague.",
-  settings
-});
-
-assert.equal(messages.length, 2);
-assert.match(messages[0].content, /product\/project field contains a genuinely relevant match/);
-assert.match(messages[0].content, /never sound like this/);
-assert.match(messages[0].content, /contrast \/ antithesis flip/i);
-assert.match(messages[1].content, /be a bit sarcastic/);
-assert.match(messages[1].content, /AI coding agents fail/);
-assert.match(messages[1].content, /Never sound like these examples/);
+assert.equal(formatProductBlock(null), "");
 
 const filtered = enforceReplyPolicy({
-  relevance_gate: {
-    mention_product: true,
-    reason: "Relevant.",
-    mention_style: "Personal example."
-  },
+  relevance_gate: { mention_product: true, reason: "Relevant.", mention_style: "Personal example." },
   options: [
     { label: "Bad", text: "Great point! https://example.com" },
     { label: "Good", text: "The missing piece is usually verification." },
     { label: "Question", text: "What would you use as the done criteria?" },
     { label: "Direct", text: "This needs a spec before another prompt tweak." }
   ]
-}, {
-  settings
-});
-
+}, { settings });
 assert.equal(filtered.options.length, 3);
-// The model's relevance gate is now trusted as-is (no mode coupling).
 assert.equal(filtered.relevance_gate.mention_product, true);
 
 // Em / en dashes are stripped from generated replies regardless of the model.
-const sanitized = enforceReplyPolicy({
-  relevance_gate: { mention_product: false, reason: "n/a", mention_style: "" },
-  options: [
-    { label: "a", text: "this is fine — but the dash should not survive" },
-    { label: "b", text: "second clean reply here" },
-    { label: "c", text: "third clean reply here" }
-  ]
-}, {
-  settings
-});
+assert.equal(sanitizeReplyText("this is fine — but the dash should not survive"), "this is fine, but the dash should not survive");
+assert.match(violatesReplyPolicy("this isn't magic, it's discipline", settings), /AI tell/);
+assert.equal(violatesReplyPolicy("a normal human reply", settings), "");
 
-assert.doesNotMatch(sanitized.options[0].text, /[—–]/);
-assert.match(sanitized.options[0].text, /this is fine, but the dash should not survive/);
-
-const mockRelevant = generateMockReplies({
-  threadText: "AI agents need better specs and verification."
-});
+const mockRelevant = generateMockReplies({ threadText: "AI agents need better specs and verification." });
 assert.equal(mockRelevant.relevance_gate.mention_product, true);
 assert.equal(mockRelevant.options.length, 3);
 
-const mockUnrelated = generateMockReplies({
-  threadText: "Best coffee shops for working outside."
-});
+const mockUnrelated = generateMockReplies({ threadText: "Best coffee shops for working outside." });
 assert.equal(mockUnrelated.relevance_gate.mention_product, false);
 
-// Compose grounding input includes the idea, feed, trends, and date.
-const postInput = buildPostInput({
-  idea: "shipped a thing today",
-  feed: [{ display: "Dev", handle: "@dev", text: "gpt-5.4 just dropped and it is fast" }],
-  trends: ["AI agents"],
-  today: "2026-05-30",
-  settings: { ...settings, feedGrounding: true }
-});
-assert.match(postInput, /2026-05-30/);
-assert.match(postInput, /gpt-5\.4 just dropped/);
-assert.match(postInput, /AI agents/);
-assert.match(postInput, /shipped a thing today/);
-
-// With feed grounding off, feed text is not included.
-const postInputOff = buildPostInput({
-  idea: "an idea",
-  feed: [{ display: "Dev", handle: "@dev", text: "secret feed content" }],
-  trends: ["secret trend"],
-  today: "2026-05-30",
-  settings: { ...settings, feedGrounding: false }
-});
-assert.doesNotMatch(postInputOff, /secret feed content/);
-assert.doesNotMatch(postInputOff, /secret trend/);
-
-// Responses API text extraction handles both shapes, skipping reasoning items.
-assert.equal(extractResponsesText({ output_text: "direct text" }), "direct text");
-assert.equal(
-  extractResponsesText({
-    output: [
-      { type: "reasoning" },
-      { type: "message", content: [{ type: "output_text", text: "walked text" }] }
-    ]
-  }),
-  "walked text"
-);
-
-// Refine result parsing.
-assert.equal(parseRefineResult('{"text":"refined draft"}').text, "refined draft");
-assert.throws(() => parseRefineResult('{"nope":1}'), /refined draft/);
-
-// Mock post returns 3 to 5 options and parses without a relevance gate.
 const mockPost = generateMockPost({ idea: "tokens" });
 assert.ok(mockPost.options.length >= 3 && mockPost.options.length <= 5);
-const noGate = parseReplyResult(
-  JSON.stringify({ options: [{ label: "a", text: "one" }, { label: "b", text: "two" }, { label: "c", text: "three" }] }),
-  { requireGate: false }
-);
-assert.equal(noGate.options.length, 3);
 
 console.log("validation ok");

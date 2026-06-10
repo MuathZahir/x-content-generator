@@ -1,6 +1,6 @@
 # Profile Guide
 
-Good ContextReply output depends on specific profile context. Keep entries short, concrete, and easy for the model to apply.
+Good penn AI output depends on specific profile context. Keep entries short, concrete, and easy for the model to apply.
 
 ## Context profile
 

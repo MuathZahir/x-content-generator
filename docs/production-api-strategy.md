@@ -1,15 +1,17 @@
 # Production API Strategy
 
+> **Status: implemented as of 1.0.0.** The backend lives in `server/` and is deployed on Railway; the extension authenticates with a device token and no longer accepts an OpenAI key. The implemented contract is in `docs/hosted-api-contract.md`. The text below is the original decision record.
+
 The local MVP lets a user provide their own OpenAI API key because it keeps the first version backend-free. That is acceptable for personal unpacked-extension use, but it is not the right default for a hosted or commercial release.
 
 ## Decision
 
-For any hosted/commercial release, ContextReply should proxy model calls through a minimal backend. The Chrome extension should authenticate to ContextReply, not store a long-lived OpenAI API key.
+For any hosted/commercial release, penn AI should proxy model calls through a minimal backend. The Chrome extension should authenticate to penn AI, not store a long-lived OpenAI API key.
 
 ## Recommended architecture
 
-1. Extension authenticates the user with ContextReply.
-2. Extension sends the selected mode, visible context preview text, and saved profile fields to the ContextReply backend after the user clicks **Suggest replies**.
+1. Extension authenticates the user with penn AI.
+2. Extension sends the selected mode, visible context preview text, and saved profile fields to the penn AI backend after the user clicks **Suggest replies**.
 3. Backend enforces rate limits, abuse limits, request size limits, and billing/plan limits.
 4. Backend calls OpenAI with the server-held API key.
 5. Backend validates the JSON shape, applies the same anti-cringe filters, and returns options to the extension.

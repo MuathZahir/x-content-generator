@@ -18,11 +18,11 @@ Checks performed:
 - Confirmed the composer text became: `The useful part is making the task concrete before the agent starts changing files.`
 - Reloaded the fixture, generated suggestions, clicked the first **Copy** control, and confirmed the button entered the `Copied` state.
 - Updated the fixture to include two composers.
-- Confirmed two ContextReply panels render, one per composer.
+- Confirmed two penn AI panels render, one per composer.
 - Called `scan()` repeatedly and confirmed the panel count stays at two.
 - Focused the second composer, triggered the content-script shortcut message, and confirmed suggestions rendered under the second composer.
 - Forced clipboard failure in the fixture, clicked **Copy**, and confirmed the visible message: `Copy failed. Use Insert or select the text manually.`
-- Switched the fixture to missing-key mode, clicked **Suggest replies**, and confirmed the visible message: `Add your OpenAI API key in the ContextReply extension settings.`
+- Switched the fixture to missing-key mode, clicked **Suggest replies**, and confirmed the visible message: `Add your OpenAI API key in the penn AI extension settings.`
 - Served the fixture from `http://127.0.0.1:8765/tests/mock-x-page.html`.
 - Generated suggestions and clicked **Copy** through browser automation.
 - Confirmed the button entered the `Copied` state on a localhost origin.
@@ -89,11 +89,11 @@ Environment:
 Checks performed:
 
 - Ran `npm run package`.
-- Confirmed `dist/contextreply.zip` was created.
-- Inspected `dist/contextreply` contents.
+- Confirmed `dist/penn-ai.zip` was created.
+- Inspected `dist/penn-ai` contents.
 - Confirmed package contains extension runtime files plus privacy docs, and does not include local test fixtures/screenshots.
 - Added `docs/profile-guide.md` to the package allowlist after linking it from the settings page.
-- Confirmed packaged `dist/contextreply/docs/profile-guide.md` exists.
+- Confirmed packaged `dist/penn-ai/docs/profile-guide.md` exists.
 - Expanded package docs to include all project documentation linked from README and release materials.
 - Confirmed packaged docs include requirements, implementation plan, release checklist, live QA playbook, privacy/security, production API strategy, profile guide, manual QA, and QA results.
 - Added `CHANGELOG.md` to the package.
@@ -181,20 +181,20 @@ Checks performed:
 Environment:
 
 - Browser automation: `agent-browser`
-- Command: `agent-browser --session contextreply-ext --extension "C:\Users\user\Projects\_Active_\x-saas-marketer" open chrome://extensions`
+- Command: `agent-browser --session pennai-ext --extension "C:\Users\user\Projects\_Active_\x-saas-marketer" open chrome://extensions`
 
 Checks performed:
 
 - Loaded the project folder as a browser extension using `agent-browser --extension`.
 - Opened `chrome://extensions`.
-- Confirmed **ContextReply** appears under **All Extensions**.
+- Confirmed **penn AI** appears under **All Extensions**.
 - Confirmed extension is enabled.
 - Opened the extension details page.
 - Confirmed expected host permissions are listed for `https://api.openai.com/*`, `https://twitter.com/*`, and `https://x.com/*`.
 - Confirmed source path points to `~\Projects\_Active_\x-saas-marketer`.
 - Removed the unused `activeTab` permission.
 - Reloaded the project as an unpacked extension in a fresh browser automation session.
-- Confirmed **ContextReply** still appears enabled under `chrome://extensions`.
+- Confirmed **penn AI** still appears enabled under `chrome://extensions`.
 
 Still not covered:
 
@@ -207,7 +207,7 @@ Still not covered:
 Environment:
 
 - Browser automation: `agent-browser`
-- Browser session: `contextreply-ext`
+- Browser session: `pennai-ext`
 - URL: `https://x.com/compose/post`
 
 Checks performed:

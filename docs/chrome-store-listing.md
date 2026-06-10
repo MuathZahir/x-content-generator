@@ -1,62 +1,68 @@
-# Chrome Web Store Listing Draft
+# Chrome Web Store Listing
+
+Everything below is ready to paste into the Chrome Web Store developer dashboard.
 
 ## Name
 
-ContextReply
+penn AI — X reply copilot in your voice
 
-## Short description
+## Short description (132 chars max)
 
-Write useful X replies with your own context, without auto-posting.
+Drafts X replies and posts that sound like you, not like AI. Human-in-the-loop: you always edit and post by hand. Never auto-posts.
+
+## Category
+
+Social & Communication (alternative: Productivity / Workflow)
 
 ## Detailed description
 
-ContextReply is a human-in-the-loop reply copilot for X/Twitter.
+penn AI is a human-in-the-loop reply copilot for X.
 
-It helps builders, founders, and technical operators draft sharper replies using their saved context: background, products/projects, opinions, tone, forbidden phrases, and examples of what not to sound like.
+It lives beside the X composer. When you click Suggest replies, it reads the post you are replying to, combines it with your saved profile (who you are, what you build, your actual posts, your forbidden phrases), and drafts 3-5 reply options that read like a sharp human typed them on a phone.
 
-The extension adds a small panel beside X reply composers. When you click **Suggest replies**, it reads the nearby visible thread text, shows you the context that will be sent, and generates reply options. You can copy or insert a suggestion, edit it, and post manually.
+WHY IT DOESN'T SOUND LIKE AI
+Every draft runs through a filter that bans the tells people clock instantly: the "not X, it's Y" contrast flip, em dashes, rule-of-three lists, hype words, listicle voice, engagement bait, forced wrap-ups. If a draft sounds like a model wrote it, it never reaches you.
 
-ContextReply does not post, like, follow, DM, repost, scrape feeds, or run bulk campaigns.
+YOUR PRODUCTS, MENTIONED ONLY WHEN IT FITS
+Save your products and projects with rules for when to mention them. A relevance gate decides honestly whether a mention belongs in the reply; a forced plug is worse than no mention, so most of the time the answer is no.
 
-## Key features
+GROW WITH PRO
+- Free, forever: 5 generations a day, replies in your voice, anti-AI-slop filter, reads images in the post.
+- Pro ($9/mo or $79/yr): 400 generations a day on the best model, original posts grounded in your live feed and trends, builder-voice product promotion, web search for current events, draft refinement chat, model choice.
 
-- Context-aware X reply suggestions.
-- Saved profile, products/projects, tone, forbidden phrases, and bad examples.
-- Product mention relevance gate.
-- Reply modes: technical insight, smart question, respectful disagreement, relevant example, soft product mention, humor, and concise rewrite.
-- Visible **Context sent** preview before generation.
-- Copy or insert suggestions manually.
-- Mock mode for local QA.
-- No auto-posting or bulk automation.
+PRIVATE BY DESIGN
+Your profile stays in your browser's local extension storage; our server never keeps a copy. Generation requests are processed and discarded — request content is never logged or stored. Sign-in is Google; payments are handled by Polar. No ads, no trackers, no data sales.
+
+HARD SAFETY LINES
+penn AI never auto-posts, never likes, follows, DMs, or reposts, never scrapes, and never acts without your click. You always edit and post by hand.
 
 ## Permission justification
 
-- `storage`: saves local settings.
-- `clipboardWrite`: supports the **Copy** action for generated suggestions.
-- `tabs`: sends the keyboard shortcut command to the active tab.
-- `https://x.com/*` and `https://twitter.com/*`: injects the reply assistant panel beside composers.
-- `https://api.openai.com/*`: calls OpenAI only after the user clicks **Suggest replies**, unless mock mode is enabled.
+- `storage` + `unlimitedStorage`: saves your profile, products, and product photos locally in extension storage. Photos are stored as downscaled images, which is why unlimitedStorage is requested.
+- `clipboardWrite`: powers the Copy button on generated drafts.
+- `tabs`: opens the sign-in/upgrade pages in a new tab and routes the Alt+Shift+R shortcut to the active X tab.
+- Host `https://x.com/*`, `https://twitter.com/*`: injects the reply panel beside the composer. Read-only; the extension never posts.
+- Host `https://heypenn.com/*`: the penn AI API. Called only when you explicitly request a generation or check your account. Holds the model API key server-side so no key ever ships in the extension.
 
-## Privacy summary
+## Privacy
 
-ContextReply stores profile settings locally in Chrome extension storage. It sends visible nearby X/Twitter thread text and saved profile context to OpenAI only after the user clicks **Suggest replies**. Profile exports omit API keys.
+- Privacy policy URL: https://heypenn.com/privacy
+- Single purpose: drafting X replies/posts on the user's explicit request.
+- Data use disclosures (Chrome dashboard):
+  - Personally identifiable information: name, email (Google sign-in) — used for account/auth only.
+  - Website content: visible post text and post image URLs from the active X page — sent only on user action, processed for generation, not stored.
+  - Not collected: location, web history, keystrokes, financial data (Polar processes payments externally).
+  - No sale of data, no use for unrelated purposes, no creditworthiness use.
 
-See `docs/privacy-security.md` for details.
+## Review notes (for the reviewer)
 
-## Review notes
+- The extension is human-in-the-loop: every generation requires a click; the user manually copies/inserts/edits/posts.
+- It never submits X posts and does not automate likes, reposts, follows, DMs, or bulk replies, and does not use the X API.
+- To test WITHOUT an account: open the extension options, enable "Use mock replies for local QA", open any X post, click reply, and press Suggest replies in the penn AI panel. Mock mode is fully offline.
+- To test WITH an account: click the toolbar icon, Continue with Google, then generate on any X post (Free plan, no card required).
 
-- The extension is human-in-the-loop.
-- The extension never submits X posts.
-- The extension does not automate likes, reposts, follows, DMs, or bulk replies.
-- The extension does not use the X API.
-- Users manually decide whether to copy, insert, edit, or post any generated text.
+## Assets needed (only remaining manual items)
 
-## Assets Needed
-
-- 128x128 extension icon.
-- 440x280 small promotional tile.
-- 920x680 screenshots:
-  - settings page
-  - X composer panel with context preview
-  - generated reply options with relevance gate
-  - mock mode/local QA state
+- 128x128 icon (plus 48 and 16). Brand: X-blue (#1d9bf0) dot on deep slate (#0c1218), see ui.css.
+- 440x280 small promo tile.
+- 1280x800 screenshots: panel with reply options, settings profile, popup account hub, promote mode.

@@ -3,16 +3,21 @@ const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
 const distDir = "dist";
-const packageDir = path.join(distDir, "contextreply");
-const zipPath = path.join(distDir, "contextreply.zip");
+const packageDir = path.join(distDir, "penn-ai");
+const zipPath = path.join(distDir, "penn-ai.zip");
 const files = [
   "manifest.json",
+  "icons/icon16.png",
+  "icons/icon32.png",
+  "icons/icon48.png",
+  "icons/icon128.png",
   "background.js",
   "content.js",
   "content.css",
   "options.html",
   "options.js",
   "popup.html",
+  "popup.js",
   "ui.css",
   "README.md",
   "CHANGELOG.md",

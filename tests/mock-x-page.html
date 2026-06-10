@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ContextReply Mock X Page</title>
+    <title>penn AI Mock X Page</title>
     <link rel="stylesheet" href="../content.css">
     <style>
       body {
@@ -87,20 +87,33 @@
 
       let refineCounter = 0;
       window.chrome = {
+        storage: {
+          local: {
+            get: async (defaults) => ({
+              ...defaults,
+              feedGrounding: true,
+              productList: [
+                { id: "spec-writer", name: "spec-writer Claude skill", description: "Specs and verification loops", mention: "agent workflow threads", media: [] },
+                { id: "agent-debrief", name: "agent debrief VS Code extension", description: "Review what an AI agent changed", mention: "code review threads", media: [] }
+              ]
+            })
+          }
+        },
         runtime: {
           sendMessage: async (message) => {
-            if (generationMode === "missing-key") {
+            if (generationMode === "signed-out") {
               return {
                 ok: false,
-                error: "Add your OpenAI API key in the ContextReply extension settings."
+                error: "Sign in to penn AI: click the penn AI icon in your toolbar.",
+                code: "unauthorized"
               };
             }
 
-            if (message.type === "contextreply.compose") {
+            if (message.type === "pennai.compose") {
               return { ok: true, result: postResult };
             }
 
-            if (message.type === "contextreply.refine") {
+            if (message.type === "pennai.refine") {
               refineCounter += 1;
               return { ok: true, result: { text: `${message.currentText} [${message.instruction}] (v${refineCounter})` } };
             }
@@ -115,14 +128,14 @@
         }
       };
 
-      window.__contextReplyTest = {
+      window.__pennAiTest = {
         triggerShortcut() {
           for (const listener of listeners) {
-            listener({ type: "contextreply.shortcut" });
+            listener({ type: "pennai.shortcut" });
           }
         },
-        useMissingKeyError() {
-          generationMode = "missing-key";
+        useSignedOutError() {
+          generationMode = "signed-out";
         },
         forceClipboardFailure() {
           Object.defineProperty(navigator, "clipboard", {

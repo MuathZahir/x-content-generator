@@ -1,56 +1,73 @@
+// penn AI background service worker.
+// All model calls go through the hosted penn AI API, which holds the
+// provider key server-side. The extension never stores or sends an OpenAI
+// key. The user's profile lives only in chrome.storage.local and is sent
+// per-request, never persisted by the server.
+
+const API_BASE = "https://heypenn.com";
+
 const SETTINGS_DEFAULTS = {
-  apiKey: "",
   model: "gpt-5.4",
   mockMode: false,
   feedGrounding: true,
   webSearch: false,
   profile: "",
   products: "",
+  productList: [],
   voice: "",
   forbidden: "",
   badExamples: ""
 };
 
-function stripJsonFence(raw) {
-  return raw.trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+const AUTH_DEFAULTS = {
+  apiToken: "",
+  pendingPairing: null
+};
+
+// --- Products ----------------------------------------------------------------
+
+// productList entries: { id, name, description, mention, media: [{ type, dataUrl, name }] }
+function formatProductBlock(product) {
+  if (!product) return "";
+  const parts = [String(product.name || "").trim()];
+  const description = String(product.description || "").trim();
+  if (description) parts.push(description);
+  const mention = String(product.mention || "").trim();
+  if (mention) parts.push(`Mention only when: ${mention}`);
+  return parts.filter(Boolean).join("\n");
 }
 
-function parseReplyResult(raw, { requireGate = true } = {}) {
-  const parsed = JSON.parse(stripJsonFence(raw));
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error("Model returned an invalid response.");
-  }
-
-  if (requireGate) {
-    const gate = parsed.relevance_gate;
-    if (!gate || typeof gate !== "object" || typeof gate.mention_product !== "boolean") {
-      throw new Error("Model response is missing the relevance gate.");
-    }
-  }
-
-  if (!Array.isArray(parsed.options) || parsed.options.length < 3 || parsed.options.length > 5) {
-    throw new Error("Model response must include 3 to 5 reply options.");
-  }
-
-  for (const option of parsed.options) {
-    if (!option || typeof option.label !== "string" || typeof option.text !== "string") {
-      throw new Error("Every reply option needs a label and text.");
-    }
-  }
-
-  return parsed;
+// Structured products win; the legacy free-text field is the fallback so old
+// profiles keep working untouched.
+function getProductsText(settings) {
+  const list = Array.isArray(settings.productList) ? settings.productList : [];
+  const blocks = list.map(formatProductBlock).filter(Boolean);
+  if (blocks.length) return blocks.join("\n\n");
+  return String(settings.products || "");
 }
 
-function parseRefineResult(raw) {
-  const parsed = JSON.parse(stripJsonFence(raw));
-  if (!parsed || typeof parsed !== "object" || typeof parsed.text !== "string" || !parsed.text.trim()) {
-    throw new Error("Model did not return a refined draft.");
-  }
-  return { text: parsed.text };
+function findProduct(settings, productId) {
+  if (!productId) return null;
+  const list = Array.isArray(settings.productList) ? settings.productList : [];
+  return list.find((product) => product && product.id === productId) || null;
 }
+
+// The server-bound profile payload. Field names match the hosted API
+// contract; the raw thread/profile text is never logged or stored there.
+function buildProfilePayload(settings) {
+  return {
+    context: String(settings.profile || ""),
+    products: getProductsText(settings),
+    voice: String(settings.voice || ""),
+    forbidden: String(settings.forbidden || ""),
+    badExamples: String(settings.badExamples || "")
+  };
+}
+
+// --- Output guards (belt and braces; the server enforces the same policy) ----
 
 // Hard guard against the em/en dash tell, plus a few mechanical AI artifacts,
-// regardless of what the model returns.
+// regardless of what comes back.
 function sanitizeReplyText(text) {
   return String(text)
     .replace(/\s*[—–]\s*/g, ", ") // em / en dash -> comma
@@ -66,7 +83,19 @@ function getForbiddenTerms(settings) {
     "this is so true",
     "couldn't agree more",
     "love this take",
-    "100%"
+    "100%",
+    "game changer",
+    "game-changer",
+    "let that sink in",
+    "plot twist",
+    "at the end of the day",
+    "in a world where",
+    "deep dive",
+    "delve",
+    "well said",
+    "chef's kiss",
+    "living rent free",
+    "say it louder"
   ];
   const custom = String(settings.forbidden || "")
     .split(/\r?\n/)
@@ -76,10 +105,27 @@ function getForbiddenTerms(settings) {
   return [...builtIn, ...custom].map((term) => term.toLowerCase());
 }
 
+// Structural AI tells we can catch mechanically. Each pattern targets a
+// sentence template, not a vocabulary choice, to keep false positives rare.
+const AI_TELL_PATTERNS = [
+  { name: "contrast flip", pattern: /\bisn'?t\s+(?:just\s+|about\s+|only\s+)?[^.,;!?]{2,60}[,.;]\s*it'?s\b/i },
+  { name: "contrast flip", pattern: /\b(?:is|are|was|were)\s+not\s+(?:just\s+|about\s+|only\s+)?[^.,;!?]{2,60}[,.;]\s*(?:it|that|this|they)\b/i },
+  { name: "contrast flip", pattern: /\byou'?re not\s+[^.,;!?]{2,60}[,.;]\s*you'?re\b/i },
+  { name: "contrast flip", pattern: /\bnot (?:just|only|about) [^.,;!?]{2,60}[,.;]\s*(?:it'?s|that'?s|they'?re)\b/i },
+  { name: "contrast flip", pattern: /\bmore than just\b/i },
+  { name: "contrast flip", pattern: /\bless about [^.,;!?]{2,60}more about\b/i },
+  { name: "contrast flip", pattern: /, and then there'?s /i },
+  { name: "setup-payoff opener", pattern: /\bhere'?s (?:the thing|what|why|how)\b/i },
+  { name: "forced wrap-up", pattern: /\b(?:in conclusion|bottom line|the takeaway)\b/i }
+];
+
 function violatesReplyPolicy(text, settings) {
   const normalized = text.toLowerCase();
   if (/#\w+/.test(text)) return "hashtags are disabled";
   if (/https?:\/\/|www\./i.test(text)) return "links are disabled";
+
+  const tell = AI_TELL_PATTERNS.find(({ pattern }) => pattern.test(text));
+  if (tell) return `AI tell: ${tell.name}`;
 
   const term = getForbiddenTerms(settings).find((forbidden) => normalized.includes(forbidden));
   return term ? `forbidden phrase: ${term}` : "";
@@ -100,75 +146,7 @@ function enforceReplyPolicy(result, { settings }) {
   };
 }
 
-const STOPWORDS = new Set([
-  "about",
-  "after",
-  "also",
-  "and",
-  "are",
-  "before",
-  "better",
-  "but",
-  "can",
-  "for",
-  "from",
-  "has",
-  "have",
-  "help",
-  "helps",
-  "into",
-  "less",
-  "like",
-  "more",
-  "only",
-  "that",
-  "the",
-  "their",
-  "them",
-  "this",
-  "use",
-  "when",
-  "with",
-  "without",
-  "you",
-  "your"
-]);
-
-function tokenize(text) {
-  return String(text)
-    .toLowerCase()
-    .match(/[a-z0-9][a-z0-9-]{2,}/g)
-    ?.filter((token) => !STOPWORDS.has(token)) || [];
-}
-
-function splitProductBlocks(products) {
-  return String(products)
-    .split(/\n\s*\n/)
-    .map((block) => block.trim())
-    .filter(Boolean);
-}
-
-function selectRelevantProducts(products, threadText, limit = 3) {
-  const threadTokens = new Set(tokenize(threadText));
-  const scored = splitProductBlocks(products).map((block, index) => {
-    const overlap = tokenize(block).filter((token) => threadTokens.has(token));
-    return {
-      block,
-      index,
-      score: new Set(overlap).size
-    };
-  });
-
-  const relevant = scored
-    .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score || a.index - b.index)
-    .slice(0, limit)
-    .map((item) => item.block);
-
-  return relevant.length > 0 ? relevant.join("\n\n") : "No saved product/project appears directly relevant to the visible thread.";
-}
-
-// --- Mock generators (offline QA) -------------------------------------------
+// --- Mock generators (offline QA, also used by store reviewers) ---------------
 
 function generateMockReplies({ threadText }) {
   const mention = /agent|workflow|spec|requirement|verification|developer|code/i.test(threadText);
@@ -200,8 +178,20 @@ function generateMockReplies({ threadText }) {
   };
 }
 
-function generateMockPost({ idea }) {
+function generateMockPost({ idea, product }) {
   const topic = String(idea || "this").trim().slice(0, 80) || "this";
+
+  if (product) {
+    const name = String(product.name || "my project").trim();
+    return {
+      options: [
+        { label: "builder", text: `spent the morning watching people use ${name} wrong and honestly the fix was a better empty state, not more docs` },
+        { label: "lesson", text: `${name} taught me that the feature i was proudest of is the one nobody touches` },
+        { label: "result", text: `someone used ${name} for a thing i never designed it for and it worked. shipping beats planning again` }
+      ]
+    };
+  }
+
   return {
     options: [
       { label: "hook", text: `spent the week on ${topic} and the thing nobody tells you is how much of it is just deciding what to ignore` },
@@ -216,150 +206,186 @@ function mockRefine({ currentText, instruction }) {
   return { text: `${currentText} (${tweak || "refined"})` };
 }
 
-// --- Prompts ----------------------------------------------------------------
+// --- Hosted API ----------------------------------------------------------------
 
-const ANTI_TELLS = `WRITE LIKE A REAL PERSON ON X
-- One thought. Short. The best lines are usually a single sentence, rarely more than two.
-- Have a real take, a real joke, or a genuine question. Pick a side. Do not hedge, do not be balanced, do not write a tiny essay.
-- Talk how people type: contractions, casual phrasing, lowercase starts are fine, a missing period is fine, mild slang is fine.
-- Dry, deadpan, or skeptical usually lands better than a joke that is trying hard. It is fine to be blunt or a little chaotic when it fits.
-- Make the options feel like they came from different people. Vary the opening word and the structure of each one.
-
-NEVER USE THESE AI TELLS. THIS IS THE MOST IMPORTANT PART.
-1. The contrast / antithesis flip. BANNED in every form: "it's not X, it's Y", "you're not X, you're Y", "there's X, and then there's Y", "the real X isn't A, it's B", "X? more like Y". This is the single biggest giveaway. Do not use it even as a joke.
-2. The rule of three. Do not list three things ("fast, cheap, and reliable"), do not build a sentence on a triad. One or two beats, never a tidy trio.
-3. Em dashes or en dashes ( — – ). Never. Use a period or a comma, or split into two sentences.
-4. Listicle / setup-payoff voice: "here's the thing", "here's what people miss", "here's what you need to know", "why it matters", "the crazy part is", "plot twist", "let that sink in", "make no mistake", "and that's the point".
-5. Canned openers: "in today's world", "in a world where", "let's be honest", "let's dive in", "honestly?", "real talk", "hot take" as a literal label.
-6. The "[Problem]? [Solution]." formula and the "it's more than just X, it's Y" formula.
-7. Hype and marketing words: crucial, vital, essential, powerful, robust, seamless, leverage, unlock, harness, elevate, supercharge, revolutionize, game changer, deep dive, delve, navigate, landscape, realm, testament, foster, underscore, paramount, transformative.
-8. Sentence stacking: a run of short, flat, equal-length declarative sentences with no rhythm ("This is a problem. It costs money. People are upset."). Vary sentence length and let it flow. If it reads like a press release or a LinkedIn post, redo it.
-9. Forced wrap-ups: "at the end of the day", "ultimately", "in conclusion", "bottom line", "the takeaway is". Just make the point and stop.
-10. Explaining or flagging the joke ("lol", "haha", "/s"). Trust the line.
-11. Emoji as punctuation. At most one, only if a real person clearly would, usually zero.
-12. Generic praise or engagement bait: "great point", "so true", "this", "underrated", "well said", "couldn't agree more".
-
-ALSO
-- No hashtags. No links.
-- Match the person's voice and opinions below. Respect their forbidden phrases and the "never sound like this" anti-examples.`;
-
-const SYSTEM_PROMPT = `You write replies on X (Twitter) as a specific person, whose profile is given below. The replies must be indistinguishable from a sharp human who actually uses X. Most AI replies are instantly recognizable and get ignored or mocked. Your only job is to not sound like that.
-
-${ANTI_TELLS}
-
-REPLY SPECIFICS
-- React to THIS specific post. Grab an exact detail, number, name, or what an attached image shows. If the reply could sit under a different tweet, it is wrong, rewrite it.
-- If the person left a note for this reply, follow it, but never at the cost of sounding human.
-
-PRODUCT MENTIONS
-- Only mention one of the user's products when the product/project field contains a genuinely relevant match AND the post makes the mention feel natural and unforced. Otherwise set mention_product to false and just write a good reply. A forced plug is worse than no mention.
-
-Return only valid JSON in exactly this shape:
-{
-  "relevance_gate": {
-    "mention_product": false,
-    "reason": "short reason a product mention does or does not fit here",
-    "mention_style": "if mentioning, one line on how it should land; else empty"
-  },
-  "options": [
-    {"label": "one or two lowercase words tagging the angle", "text": "the reply"},
-    {"label": "...", "text": "the reply"},
-    {"label": "...", "text": "the reply"}
-  ]
-}
-Always return 3 to 5 options.`;
-
-const POST_SYSTEM_PROMPT = `You write original posts on X (Twitter) as a specific person, whose profile is given below. The posts must read like a sharp human who actually uses X, and they must feel TIMELY, not generic or evergreen.
-
-${ANTI_TELLS}
-
-POST SPECIFICS
-- Start with a strong first line. The opening has to earn the next line.
-- One concrete idea per post: an opinion, a sharp observation, a short story, or a real question. Not a summary, not a thread, not a list.
-- Use the supplied current context (today's date, the posts currently in my feed, what is trending, and any web results) to anchor the post in what is actually happening right now. Reference real, current developments where it fits.
-- Never fabricate facts, fake quotes, invented numbers, or events you are not sure happened. If you are unsure, stay general rather than making something up. Only state specifics you can support from the supplied context or web results.
-- Build from the user's idea below. The idea is the seed; sharpen it, do not just restate it.
-
-Return only valid JSON in exactly this shape:
-{
-  "options": [
-    {"label": "one or two lowercase words tagging the angle", "text": "the post"},
-    {"label": "...", "text": "the post"},
-    {"label": "...", "text": "the post"}
-  ]
-}
-Always return 3 to 5 distinct drafts that take genuinely different angles.`;
-
-const REFINE_SYSTEM_PROMPT = `You refine a single draft of an X (Twitter) ${"post or reply"} as a specific person, whose profile is given below. You are given the current draft and an instruction. Rewrite the draft to satisfy the instruction while keeping it human.
-
-${ANTI_TELLS}
-
-REFINE SPECIFICS
-- Apply the new instruction, and keep any earlier instructions still satisfied.
-- Change only what the instruction asks for. Keep the core idea unless told otherwise.
-- Return the single best version. Do not return options or commentary.
-
-Return only valid JSON in exactly this shape:
-{ "text": "the refined draft" }`;
-
-function formatUserContext(settings, threadText = "") {
-  return `User context profile:
-${settings.profile}
-
-Most relevant saved products/projects:
-${selectRelevantProducts(settings.products, threadText)}
-
-Writing examples and tone:
-${settings.voice}
-
-Forbidden phrases or behaviors:
-${settings.forbidden}
-
-Never sound like these examples:
-${settings.badExamples}`;
+async function getAuth() {
+  if (typeof chrome === "undefined" || !chrome.storage?.local) return { ...AUTH_DEFAULTS };
+  return chrome.storage.local.get(AUTH_DEFAULTS);
 }
 
-// --- Reply generation (Chat Completions) ------------------------------------
-
-function buildUserText({ note, threadText, settings, hasImages }) {
-  const trimmedNote = String(note || "").trim();
-  const noteBlock = trimmedNote
-    ? `\n\nMy note for this reply (follow it, but stay human):
-${trimmedNote}`
-    : "";
-
-  const imageNote = hasImages
-    ? "\n\nImage(s) from the post are attached below. Read them and let them shape the reply."
-    : "";
-
-  return `${formatUserContext(settings, threadText)}${noteBlock}
-
-The post I am replying to (last block is the one I am replying to):
-${threadText}${imageNote}
-
-Write the reply options now.`;
+async function setAuth(values) {
+  if (typeof chrome === "undefined" || !chrome.storage?.local) return;
+  await chrome.storage.local.set(values);
 }
 
-function buildMessages({ note, threadText, settings, images }) {
-  const hasImages = Array.isArray(images) && images.length > 0;
-  const userText = buildUserText({ note, threadText, settings, hasImages });
-
-  const userContent = hasImages
-    ? [
-        { type: "text", text: userText },
-        ...images.map((url) => ({ type: "image_url", image_url: { url, detail: "auto" } }))
-      ]
-    : userText;
-
-  return [
-    { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: userContent }
-  ];
+class ApiError extends Error {
+  constructor(code, message, status) {
+    super(message);
+    this.code = code;
+    this.status = status;
+  }
 }
 
-function isGpt5(model) {
-  return /^gpt-5/i.test(model);
+const SIGN_IN_MESSAGE = "Sign in to penn AI: click the penn AI icon in your toolbar.";
+
+async function apiFetch(path, { method = "POST", body, token } = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+  } catch {
+    throw new ApiError("network", "Could not reach penn AI. Check your connection and try again.", 0);
+  }
+
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    const code = data?.error?.code || "request_failed";
+    const message = data?.error?.message || `Request failed (${response.status}).`;
+    throw new ApiError(code, message, response.status);
+  }
+
+  return data;
 }
+
+async function requireToken() {
+  const auth = await getAuth();
+  if (auth.apiToken) return auth.apiToken;
+
+  // A pairing may have been approved in the browser tab while the panel was
+  // open; settle it before giving up.
+  const claimed = await tryClaimPairing(auth);
+  if (claimed) return claimed;
+
+  throw new ApiError("unauthorized", SIGN_IN_MESSAGE, 401);
+}
+
+async function authedApi(path, body) {
+  const token = await requireToken();
+  try {
+    return await apiFetch(path, { body, token });
+  } catch (error) {
+    if (error.status === 401) {
+      await setAuth({ apiToken: "" });
+      throw new ApiError("unauthorized", SIGN_IN_MESSAGE, 401);
+    }
+    throw error;
+  }
+}
+
+// --- Sign-in (device pairing) ----------------------------------------------------
+
+async function tryClaimPairing(auth) {
+  const pending = auth?.pendingPairing;
+  if (!pending || !pending.code || !pending.secret) return "";
+  if (pending.startedAt && Date.now() - pending.startedAt > 15 * 60 * 1000) {
+    await setAuth({ pendingPairing: null });
+    return "";
+  }
+
+  try {
+    const data = await apiFetch("/v1/device/claim", {
+      body: { code: pending.code, secret: pending.secret }
+    });
+    if (data?.token) {
+      await setAuth({ apiToken: data.token, pendingPairing: null });
+      return data.token;
+    }
+  } catch {
+    // Claim is best-effort; the next status check retries.
+  }
+  return "";
+}
+
+async function startSignIn() {
+  const pairing = await apiFetch("/v1/device/new", { body: {} });
+  await setAuth({
+    apiToken: "",
+    pendingPairing: { code: pairing.code, secret: pairing.secret, startedAt: Date.now() }
+  });
+
+  if (typeof chrome !== "undefined" && chrome.tabs?.create) {
+    await chrome.tabs.create({ url: `${API_BASE}/connect?code=${encodeURIComponent(pairing.code)}` });
+  }
+
+  // Poll while the worker stays alive; the popup and any generation attempt
+  // also try to settle the claim, so a sleeping worker is not fatal.
+  pollPairing();
+  return { ok: true };
+}
+
+let pollTimer = null;
+function pollPairing(attempt = 0) {
+  if (pollTimer) clearTimeout(pollTimer);
+  if (attempt > 120) return;
+  pollTimer = setTimeout(async () => {
+    const auth = await getAuth();
+    if (!auth.pendingPairing || auth.apiToken) return;
+    const token = await tryClaimPairing(auth);
+    if (!token) pollPairing(attempt + 1);
+  }, 2500);
+}
+
+async function getAccount() {
+  const auth = await getAuth();
+
+  let token = auth.apiToken;
+  if (!token) token = await tryClaimPairing(auth);
+  if (!token) {
+    return { signedIn: false, pending: Boolean(auth.pendingPairing) };
+  }
+
+  try {
+    const me = await apiFetch("/v1/me", { method: "GET", token });
+    return { signedIn: true, ...me };
+  } catch (error) {
+    if (error.status === 401) {
+      await setAuth({ apiToken: "" });
+      return { signedIn: false, pending: false };
+    }
+    throw error;
+  }
+}
+
+async function signOut() {
+  const auth = await getAuth();
+  if (auth.apiToken) {
+    try {
+      await apiFetch("/v1/signout", { body: {}, token: auth.apiToken });
+    } catch {
+      // Token revocation is best-effort; local sign-out always succeeds.
+    }
+  }
+  await setAuth({ apiToken: "", pendingPairing: null });
+  return { ok: true };
+}
+
+async function openPage({ page }) {
+  const paths = {
+    upgrade: "/upgrade",
+    portal: "/portal",
+    privacy: "/privacy",
+    connect: "/connect"
+  };
+  const path = paths[page] || "/";
+  if (typeof chrome !== "undefined" && chrome.tabs?.create) {
+    await chrome.tabs.create({ url: `${API_BASE}${path}` });
+  }
+  return { ok: true };
+}
+
+// --- Generation -------------------------------------------------------------------
 
 async function generateReplies({ note, threadText, images }) {
   const settings = await chrome.storage.local.get(SETTINGS_DEFAULTS);
@@ -367,198 +393,48 @@ async function generateReplies({ note, threadText, images }) {
     return enforceReplyPolicy(generateMockReplies({ note, threadText }), { settings });
   }
 
-  if (!settings.apiKey) {
-    throw new Error("Add your OpenAI API key in the ContextReply extension settings.");
-  }
-
-  const model = settings.model || SETTINGS_DEFAULTS.model;
-  const body = {
-    model,
-    response_format: { type: "json_object" },
-    messages: buildMessages({ note, threadText, settings, images })
-  };
-
-  // GPT-5 family rejects a custom temperature; older models accept it and a
-  // higher value buys us more variety between options.
-  if (!isGpt5(model)) {
-    body.temperature = 0.9;
-  }
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.apiKey}`
-    },
-    body: JSON.stringify(body)
+  const result = await authedApi("/v1/generate", {
+    note,
+    threadText,
+    images,
+    model: settings.model || SETTINGS_DEFAULTS.model,
+    profile: buildProfilePayload(settings)
   });
 
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`OpenAI request failed (${response.status}): ${detail.slice(0, 240)}`);
-  }
-
-  const data = await response.json();
-  const result = parseReplyResult(data.choices?.[0]?.message?.content || "");
   return enforceReplyPolicy(result, { settings });
 }
 
-// --- Post composition (Responses API, optional web search) ------------------
-
-function formatFeed(feed) {
-  return (Array.isArray(feed) ? feed : [])
-    .filter((post) => post && post.text)
-    .map((post) => {
-      const who = [post.display, post.handle].filter(Boolean).join(" ");
-      return `${who ? who + ": " : ""}${String(post.text).slice(0, 280)}`;
-    })
-    .join("\n");
-}
-
-function buildPostInput({ idea, feed, trends, today, settings }) {
-  const blocks = [formatUserContext(settings)];
-
-  if (today) {
-    blocks.push(`Today's date: ${today}`);
-  }
-
-  if (settings.feedGrounding) {
-    const feedText = formatFeed(feed);
-    if (feedText) {
-      blocks.push(`Posts currently in my X feed (what my circle is talking about right now):\n${feedText}`);
-    }
-    const trendList = (Array.isArray(trends) ? trends : []).filter(Boolean);
-    if (trendList.length) {
-      blocks.push(`Trending now:\n${trendList.map((t) => `- ${t}`).join("\n")}`);
-    }
-  }
-
-  blocks.push(`My idea for the post:\n${String(idea || "").trim()}`);
-  blocks.push("Write 3-5 distinct, timely post drafts now.");
-
-  return blocks.join("\n\n");
-}
-
-function extractResponsesText(data) {
-  if (typeof data.output_text === "string" && data.output_text.trim()) {
-    return data.output_text;
-  }
-  const output = Array.isArray(data.output) ? data.output : [];
-  for (const item of output) {
-    if (item?.type === "message" && Array.isArray(item.content)) {
-      const part = item.content.find((c) => c?.type === "output_text" && typeof c.text === "string");
-      if (part) return part.text;
-    }
-  }
-  return "";
-}
-
-async function callResponses({ instructions, userText, model, webSearch, apiKey }) {
-  const body = {
-    model,
-    instructions,
-    input: [
-      { role: "user", content: [{ type: "input_text", text: userText }] }
-    ],
-    text: { format: { type: "json_object" } }
-  };
-
-  if (webSearch) {
-    body.tools = [{ type: "web_search" }];
-    body.tool_choice = "auto";
-  }
-
-  if (isGpt5(model)) {
-    body.reasoning = { effort: "low" };
-  } else {
-    body.temperature = 0.9;
-  }
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify(body)
-  });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`OpenAI request failed (${response.status}): ${detail.slice(0, 240)}`);
-  }
-
-  return response.json();
-}
-
-async function generatePost({ idea, feed, trends }) {
+async function generatePost({ idea, feed, trends, productId }) {
   const settings = await chrome.storage.local.get(SETTINGS_DEFAULTS);
+  const product = findProduct(settings, productId);
+
   if (settings.mockMode) {
-    return enforceReplyPolicy(generateMockPost({ idea }), { settings });
+    return enforceReplyPolicy(generateMockPost({ idea, product }), { settings });
   }
 
-  if (!settings.apiKey) {
-    throw new Error("Add your OpenAI API key in the ContextReply extension settings.");
+  if (productId && !product) {
+    throw new Error("That product no longer exists. Pick another in the panel.");
   }
 
-  const model = settings.model || SETTINGS_DEFAULTS.model;
-  const today = new Date().toISOString().slice(0, 10);
-  const userText = buildPostInput({ idea, feed, trends, today, settings });
-
-  const data = await callResponses({
-    instructions: POST_SYSTEM_PROMPT,
-    userText,
-    model,
+  const result = await authedApi("/v1/compose", {
+    idea,
+    feed: settings.feedGrounding ? feed : [],
+    trends: settings.feedGrounding ? trends : [],
+    feedGrounding: Boolean(settings.feedGrounding),
     webSearch: Boolean(settings.webSearch),
-    apiKey: settings.apiKey
+    model: settings.model || SETTINGS_DEFAULTS.model,
+    product: product
+      ? {
+          name: product.name,
+          description: product.description,
+          mention: product.mention,
+          media: Array.isArray(product.media) ? product.media.slice(0, 4) : []
+        }
+      : null,
+    profile: buildProfilePayload(settings)
   });
 
-  const result = parseReplyResult(extractResponsesText(data), { requireGate: false });
   return enforceReplyPolicy(result, { settings });
-}
-
-// --- Draft refinement (Chat Completions) ------------------------------------
-
-function buildRefineMessages({ kind, currentText, instruction, baseContext, images, history, settings }) {
-  const hasImages = kind === "reply" && Array.isArray(images) && images.length > 0;
-
-  const baseBlock = kind === "post"
-    ? `My original idea:\n${baseContext || "(none given)"}`
-    : `The post I am replying to:\n${baseContext || "(none captured)"}`;
-
-  const earlier = (Array.isArray(history) ? history : [])
-    .map((turn) => `- ${turn.instruction}`)
-    .filter(Boolean)
-    .join("\n");
-  const earlierBlock = earlier ? `\n\nEarlier instructions to keep satisfied:\n${earlier}` : "";
-
-  const imageNote = hasImages
-    ? "\n\nImage(s) from the original post are attached below; keep the refined draft consistent with them."
-    : "";
-
-  const userText = `${formatUserContext(settings, baseContext || "")}
-
-${baseBlock}
-
-Current draft:
-${currentText}${earlierBlock}
-
-New instruction:
-${instruction}${imageNote}
-
-Return the refined draft as JSON now.`;
-
-  const userContent = hasImages
-    ? [
-        { type: "text", text: userText },
-        ...images.map((url) => ({ type: "image_url", image_url: { url, detail: "auto" } }))
-      ]
-    : userText;
-
-  return [
-    { role: "system", content: REFINE_SYSTEM_PROMPT },
-    { role: "user", content: userContent }
-  ];
 }
 
 async function refineDraft({ kind, currentText, instruction, baseContext, images, history }) {
@@ -568,36 +444,17 @@ async function refineDraft({ kind, currentText, instruction, baseContext, images
   if (settings.mockMode) {
     text = mockRefine({ currentText, instruction }).text;
   } else {
-    if (!settings.apiKey) {
-      throw new Error("Add your OpenAI API key in the ContextReply extension settings.");
-    }
-
-    const model = settings.model || SETTINGS_DEFAULTS.model;
-    const body = {
-      model,
-      response_format: { type: "json_object" },
-      messages: buildRefineMessages({ kind, currentText, instruction, baseContext, images, history, settings })
-    };
-    if (!isGpt5(model)) {
-      body.temperature = 0.8;
-    }
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.apiKey}`
-      },
-      body: JSON.stringify(body)
+    const result = await authedApi("/v1/refine", {
+      kind,
+      currentText,
+      instruction,
+      baseContext,
+      images,
+      history,
+      model: settings.model || SETTINGS_DEFAULTS.model,
+      profile: buildProfilePayload(settings)
     });
-
-    if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(`OpenAI request failed (${response.status}): ${detail.slice(0, 240)}`);
-    }
-
-    const data = await response.json();
-    text = parseRefineResult(data.choices?.[0]?.message?.content || "").text;
+    text = result.text;
   }
 
   const cleaned = sanitizeReplyText(text);
@@ -612,9 +469,13 @@ async function refineDraft({ kind, currentText, instruction, baseContext, images
 // --- Messaging --------------------------------------------------------------
 
 const HANDLERS = {
-  "contextreply.generate": generateReplies,
-  "contextreply.compose": generatePost,
-  "contextreply.refine": refineDraft
+  "pennai.generate": generateReplies,
+  "pennai.compose": generatePost,
+  "pennai.refine": refineDraft,
+  "pennai.account": getAccount,
+  "pennai.signin": startSignIn,
+  "pennai.signout": signOut,
+  "pennai.open": openPage
 };
 
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
@@ -624,7 +485,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 
     handler(message)
       .then((result) => sendResponse({ ok: true, result }))
-      .catch((error) => sendResponse({ ok: false, error: error.message }));
+      .catch((error) => sendResponse({ ok: false, error: error.message, code: error.code || "" }));
 
     return true;
   });
@@ -637,31 +498,28 @@ if (typeof chrome !== "undefined" && chrome.commands?.onCommand) {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return;
 
-    chrome.tabs.sendMessage(tab.id, { type: "contextreply.shortcut" });
+    chrome.tabs.sendMessage(tab.id, { type: "pennai.shortcut" });
   });
 }
 
 if (typeof module !== "undefined") {
   module.exports = {
-    buildMessages,
-    buildPostInput,
-    buildRefineMessages,
-    callResponses,
+    API_BASE,
+    buildProfilePayload,
     enforceReplyPolicy,
-    extractResponsesText,
-    formatUserContext,
+    findProduct,
+    formatProductBlock,
     generateMockPost,
     generateMockReplies,
     generatePost,
     generateReplies,
+    getAccount,
+    getProductsText,
     mockRefine,
-    parseRefineResult,
-    parseReplyResult,
     refineDraft,
     sanitizeReplyText,
-    selectRelevantProducts,
-    stripJsonFence,
-    tokenize,
+    signOut,
+    startSignIn,
     violatesReplyPolicy
   };
 }

@@ -1,4 +1,4 @@
-# ContextReply Requirements
+# penn AI Requirements
 
 ## Product goal
 
@@ -44,7 +44,7 @@ A technical founder, indie hacker, consultant, or builder who wants to participa
 
 - Chrome can load the folder as an unpacked extension.
 - The options page saves and reloads profile settings.
-- On X/Twitter, a ContextReply panel appears in reply composers.
+- On X/Twitter, a penn AI panel appears in reply composers.
 - Clicking **Suggest replies** either returns options or shows a clear setup/API error.
 - Clicking **Insert** inserts text into the composer, but does not post.
 - Clicking **Copy** copies text without changing the composer.

@@ -1,99 +1,143 @@
 const assert = require("node:assert/strict");
 
 let storedSettings = {};
+let storageWrites = [];
 global.chrome = {
   storage: {
     local: {
       async get(defaults) {
         return { ...defaults, ...storedSettings };
+      },
+      async set(next) {
+        storageWrites.push(next);
+        storedSettings = { ...storedSettings, ...next };
       }
     }
   }
 };
 
-let fetchCalls = 0;
-global.fetch = async () => {
-  fetchCalls += 1;
-  return {
-    ok: true,
-    async json() {
-      return {
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                relevance_gate: {
-                  mention_product: true,
-                  reason: "Relevant to requirements and verification.",
-                  mention_style: "Personal example."
-                },
-                options: [
-                  { label: "Bad", text: "Great point! https://example.com" },
-                  { label: "Helpful", text: "The verification loop is the useful part." },
-                  { label: "Question", text: "What would you use as the done criteria?" },
-                  { label: "Direct", text: "A spec beats another prompt tweak here." }
-                ]
-              })
-            }
-          }
-        ]
-      };
-    }
-  };
+let fetchCalls = [];
+let fetchResponder = null;
+global.fetch = async (url, options) => {
+  fetchCalls.push({ url, options });
+  return fetchResponder(url, options);
 };
 
-const { generateReplies, generatePost, refineDraft } = require("../background.js");
+function jsonResponse(body, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    async json() {
+      return body;
+    }
+  };
+}
+
+const {
+  API_BASE,
+  buildProfilePayload,
+  generateReplies,
+  generatePost,
+  refineDraft,
+  getAccount
+} = require("../background.js");
 
 async function main() {
+  assert.match(API_BASE, /^https:\/\//);
+
+  // 1. Mock mode never touches the network and never needs an account.
   storedSettings = {
     mockMode: true,
     products: "Spec tool\n- Requirements and verification workflows.",
     forbidden: "No generic praise."
   };
-  fetchCalls = 0;
+  fetchCalls = [];
   const mockResult = await generateReplies({
     note: "mention my project if it fits",
     threadText: "AI agents need requirements and verification."
   });
-  assert.equal(fetchCalls, 0);
+  assert.equal(fetchCalls.length, 0);
   assert.equal(mockResult.options.length, 3);
   assert.equal(mockResult.relevance_gate.mention_product, true);
 
-  storedSettings = {
-    mockMode: false,
-    apiKey: ""
-  };
+  // 2. Signed out + live mode = a clear sign-in error, no API call.
+  storedSettings = { mockMode: false, apiToken: "" };
+  fetchCalls = [];
   await assert.rejects(
-    () => generateReplies({ mode: "Ask a smart question", threadText: "Any thread." }),
-    /Add your OpenAI API key/
+    () => generateReplies({ note: "", threadText: "Any thread." }),
+    /Sign in to penn AI/
   );
+  assert.equal(fetchCalls.length, 0);
 
+  // 3. Signed in: one POST to the hosted API with the bearer token, the
+  // user's profile payload, and no provider key anywhere.
   storedSettings = {
     mockMode: false,
-    apiKey: "sk-test",
-    model: "gpt-4.1-mini",
+    apiToken: "penn_testtoken",
+    model: "gpt-5.4",
     profile: "Builder.",
     products: "Spec tool\n- Requirements and verification workflows.",
     voice: "Direct.",
     forbidden: "No generic praise.",
     badExamples: "Great point!"
   };
-  fetchCalls = 0;
+  fetchCalls = [];
+  fetchResponder = (url) => {
+    assert.equal(url, `${API_BASE}/v1/generate`);
+    return jsonResponse({
+      relevance_gate: {
+        mention_product: true,
+        reason: "Relevant to requirements and verification.",
+        mention_style: "Personal example."
+      },
+      options: [
+        { label: "Bad", text: "Great point! https://example.com" },
+        { label: "Helpful", text: "The verification loop is the useful part." },
+        { label: "Question", text: "What would you use as the done criteria?" },
+        { label: "Direct", text: "A spec beats another prompt tweak here." }
+      ]
+    });
+  };
   const liveLikeResult = await generateReplies({
     note: "",
     threadText: "AI agents need requirements and verification."
   });
-  assert.equal(fetchCalls, 1);
+  assert.equal(fetchCalls.length, 1);
+  const sent = JSON.parse(fetchCalls[0].options.body);
+  assert.equal(fetchCalls[0].options.headers.Authorization, "Bearer penn_testtoken");
+  assert.equal(sent.model, "gpt-5.4");
+  assert.equal(sent.profile.context, "Builder.");
+  assert.match(sent.profile.products, /Spec tool/);
   assert.equal(liveLikeResult.options.length, 3);
-  // Relevance gate is trusted from the model response now.
   assert.equal(liveLikeResult.relevance_gate.mention_product, true);
   assert.ok(liveLikeResult.options.every((option) => !/great point|https?:\/\//i.test(option.text)));
 
-  // Compose + refine work in mock mode without touching the network.
+  // 4. A 401 clears the stored token and asks the user to sign in again.
+  storedSettings = { mockMode: false, apiToken: "penn_expired", profile: "p" };
+  fetchCalls = [];
+  storageWrites = [];
+  fetchResponder = () => jsonResponse({ error: { code: "unauthorized", message: "Sign in." } }, 401);
+  await assert.rejects(
+    () => generateReplies({ note: "", threadText: "Any thread." }),
+    /Sign in to penn AI/
+  );
+  assert.ok(storageWrites.some((write) => write.apiToken === ""));
+
+  // 5. Quota / upgrade errors surface the server's message verbatim.
+  storedSettings = { mockMode: false, apiToken: "penn_free" };
+  fetchResponder = () => jsonResponse({
+    error: { code: "upgrade_required", message: "Writing original posts is a Pro feature." }
+  }, 402);
+  await assert.rejects(
+    () => generatePost({ idea: "an idea", feed: [], trends: [] }),
+    /Pro feature/
+  );
+
+  // 6. Compose + refine work in mock mode without touching the network.
   storedSettings = { mockMode: true };
-  fetchCalls = 0;
+  fetchCalls = [];
   const post = await generatePost({ idea: "spent a million on tokens", feed: [], trends: [] });
-  assert.equal(fetchCalls, 0);
+  assert.equal(fetchCalls.length, 0);
   assert.ok(post.options.length >= 3 && post.options.length <= 5);
 
   const refined = await refineDraft({
@@ -104,9 +148,33 @@ async function main() {
     images: [],
     history: []
   });
-  assert.equal(fetchCalls, 0);
+  assert.equal(fetchCalls.length, 0);
   assert.equal(typeof refined.text, "string");
   assert.ok(refined.text.length > 0);
+
+  // 7. Account status maps /v1/me onto the popup contract.
+  storedSettings = { apiToken: "penn_me" };
+  fetchResponder = () => jsonResponse({
+    user: { email: "maya@example.com" },
+    plan: "free",
+    limits: { dailyCalls: 5 },
+    usedToday: 2
+  });
+  const account = await getAccount();
+  assert.equal(account.signedIn, true);
+  assert.equal(account.plan, "free");
+  assert.equal(account.usedToday, 2);
+
+  // 8. The profile payload carries every saved field and nothing secret.
+  const payload = buildProfilePayload({
+    profile: "ctx",
+    productList: [{ id: "a", name: "Tool", description: "Does a thing", mention: "tool threads", media: [] }],
+    voice: "v",
+    forbidden: "f",
+    badExamples: "b"
+  });
+  assert.deepEqual(Object.keys(payload).sort(), ["badExamples", "context", "forbidden", "products", "voice"]);
+  assert.match(payload.products, /Mention only when: tool threads/);
 
   console.log("background test ok");
 }

@@ -3,134 +3,221 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ContextReply Settings</title>
+    <title>penn AI Settings</title>
     <link rel="stylesheet" href="ui.css">
   </head>
   <body class="settings-body">
-    <header class="topbar">
-      <div class="topbar-inner">
+    <div class="shell">
+      <aside class="rail">
         <div class="brand">
           <span class="brand-dot"></span>
-          <span class="brand-name">ContextReply</span>
-          <span class="brand-tag">settings</span>
+          <span class="brand-name">penn AI</span>
         </div>
-        <nav class="topbar-links">
+
+        <nav class="rail-nav" aria-label="Sections">
+          <a href="#sec-connection"><span class="idx">01</span>Account</a>
+          <a href="#sec-identity"><span class="idx">02</span>Identity</a>
+          <a href="#sec-products"><span class="idx">03</span>Products</a>
+          <a href="#sec-voice"><span class="idx">04</span>Voice &amp; guardrails</a>
+          <a href="#sec-playground"><span class="idx">05</span>Playground</a>
+        </nav>
+
+        <div class="strength" aria-live="polite">
+          <div class="strength-head">
+            <span class="strength-title">Profile strength</span>
+            <span id="strengthLabel" class="strength-value">—</span>
+          </div>
+          <div class="strength-track"><div id="strengthFill" class="strength-fill"></div></div>
+          <p id="strengthHint" class="strength-hint">Fill in your profile to sharpen replies.</p>
+        </div>
+
+        <div class="rail-links">
           <a href="docs/profile-guide.md" target="_blank">Profile guide</a>
           <a href="docs/x-safety-guide.md" target="_blank">Safety</a>
-        </nav>
-      </div>
-    </header>
-
-    <main class="settings">
-      <section class="intro">
-        <h1>Your reply profile</h1>
-        <p class="muted">Everything below stays in this browser's local extension storage. When you click <strong>Suggest replies</strong>, ContextReply sends the visible post (and any post images) plus this profile to OpenAI — and nothing else.</p>
-      </section>
-
-      <section class="card">
-        <div class="card-head">
-          <h2>Connection</h2>
-          <p class="card-sub">Your key and the model used for generation.</p>
         </div>
+      </aside>
 
-        <div class="field">
-          <label for="apiKey">OpenAI API key</label>
-          <input id="apiKey" type="password" autocomplete="off" placeholder="sk-...">
-          <p class="field-note">Stored locally in this browser. Profile exports omit the key. Revoke and replace any key that was pasted into chat, email, or a shared document.</p>
-        </div>
+      <main class="settings">
+        <section class="intro">
+          <p class="kicker">Your reply copilot for X</p>
+          <h1>Sound like <em>you</em>,<br>not like a model.</h1>
+          <p class="muted">Your profile below stays in this browser's local extension storage; our server never keeps a copy. When you click <strong>Suggest replies</strong>, penn AI sends the visible post (and any post images) plus this profile to your account's generation API — and nothing else is sent, logged, or stored.</p>
+        </section>
 
-        <div class="field">
-          <label for="model">Model</label>
-          <select id="model">
-            <option value="gpt-5.4">gpt-5.4 — best quality + vision (recommended)</option>
-            <option value="gpt-5.4-mini">gpt-5.4-mini — faster, cheaper</option>
-            <option value="gpt-4.1">gpt-4.1</option>
-            <option value="gpt-4.1-mini">gpt-4.1-mini</option>
-            <option value="gpt-4o">gpt-4o</option>
-            <option value="gpt-4o-mini">gpt-4o-mini</option>
-          </select>
-          <p class="field-note">All listed models can read images attached to a post.</p>
-        </div>
+        <section class="card" id="sec-connection">
+          <div class="card-head">
+            <span class="card-idx">01</span>
+            <div class="card-head-text">
+              <h2>Account</h2>
+              <p class="card-sub">Sign in once and generation just works. No API keys to paste; the model key lives on the server.</p>
+            </div>
+          </div>
 
-        <div class="field toggle-field">
-          <label class="switch" for="feedGrounding">
-            <input id="feedGrounding" type="checkbox">
-            <span class="switch-track"><span class="switch-thumb"></span></span>
-            <span class="switch-label">Ground new posts in my home feed</span>
-          </label>
-          <p class="field-note">When writing a new post, sends the text of the posts currently visible in your home feed (plus trends and today's date) to OpenAI, so drafts reference what is actually happening. Turn off to send only your idea.</p>
-        </div>
+          <div class="field">
+            <div id="acctSignedOut" class="acct-line hidden">
+              <span class="acct-line-text">Not signed in.</span>
+              <button id="acctSignIn" type="button" class="primary">Continue with Google</button>
+            </div>
+            <div id="acctSignedIn" class="acct-line hidden">
+              <span class="acct-line-text">Signed in as <strong id="acctWho"></strong> <span id="acctPlan" class="plan-chip"></span></span>
+              <span class="acct-line-actions">
+                <button id="acctUpgrade" type="button" class="secondary hidden">Upgrade to Pro</button>
+                <button id="acctSignOut" type="button" class="acct-signout">Sign out</button>
+              </span>
+            </div>
+            <p id="acctUsage" class="field-note"></p>
+          </div>
 
-        <div class="field toggle-field">
-          <label class="switch" for="webSearch">
-            <input id="webSearch" type="checkbox">
-            <span class="switch-track"><span class="switch-thumb"></span></span>
-            <span class="switch-label">Search the web for current events</span>
-          </label>
-          <p class="field-note">Lets the model look things up on the web while writing new posts, for current developments beyond your feed. Slower and costs more per post.</p>
-        </div>
+          <div class="field">
+            <label for="model">Model</label>
+            <select id="model">
+              <option value="gpt-5.4">gpt-5.4 — best quality + vision (Pro)</option>
+              <option value="gpt-5.4-mini">gpt-5.4-mini — fast (Free default)</option>
+              <option value="gpt-4.1">gpt-4.1 (Pro)</option>
+              <option value="gpt-4.1-mini">gpt-4.1-mini (Pro)</option>
+              <option value="gpt-4o">gpt-4o (Pro)</option>
+              <option value="gpt-4o-mini">gpt-4o-mini (Pro)</option>
+            </select>
+            <p class="field-note">All listed models can read images attached to a post. The Free plan always runs gpt-5.4-mini; Pro unlocks every model here.</p>
+          </div>
 
-        <div class="field toggle-field">
-          <label class="switch" for="mockMode">
-            <input id="mockMode" type="checkbox">
-            <span class="switch-track"><span class="switch-thumb"></span></span>
-            <span class="switch-label">Use mock replies for local QA</span>
-          </label>
-          <p id="mockModeNote" class="field-note hidden">Mock mode uses local sample replies and does not call OpenAI.</p>
-        </div>
-      </section>
+          <div class="field toggle-field">
+            <label class="switch" for="feedGrounding">
+              <input id="feedGrounding" type="checkbox">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-label">Ground new posts in my home feed</span>
+            </label>
+            <p class="field-note">When writing a new post, sends the text of the posts currently visible in your home feed (plus trends and today's date) to OpenAI, so drafts reference what is actually happening. Turn off to send only your idea.</p>
+          </div>
 
-      <section class="card">
-        <div class="card-head">
-          <h2>Who you are</h2>
-          <p class="card-sub">The model writes as you. The sharper this is, the better the replies.</p>
-        </div>
-        <div class="field">
-          <label for="profile">Context profile</label>
-          <textarea id="profile" rows="9" placeholder="Who you are, what you build, the opinions you hold..."></textarea>
-        </div>
-      </section>
+          <div class="field toggle-field">
+            <label class="switch" for="webSearch">
+              <input id="webSearch" type="checkbox">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-label">Search the web for current events</span>
+            </label>
+            <p class="field-note">Lets the model look things up on the web while writing new posts, for current developments beyond your feed. Slower and costs more per post.</p>
+          </div>
 
-      <section class="card">
-        <div class="card-head">
-          <h2>Products &amp; projects</h2>
-          <p class="card-sub">Separate each with a blank line. Only mentioned when a post is genuinely relevant.</p>
-        </div>
-        <div class="field">
-          <label for="products">Products and projects</label>
-          <textarea id="products" rows="8" placeholder="Project name&#10;- what it does&#10;- when it is relevant to mention"></textarea>
-        </div>
-      </section>
+          <div class="field toggle-field">
+            <label class="switch" for="mockMode">
+              <input id="mockMode" type="checkbox">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-label">Use mock replies for local QA</span>
+            </label>
+            <p id="mockModeNote" class="field-note hidden">Mock mode uses local sample replies and does not call OpenAI or the penn AI API. No sign-in needed.</p>
+          </div>
+        </section>
 
-      <div class="card-grid">
-        <section class="card">
-          <div class="card-head"><h2>Voice</h2></div>
+        <section class="card" id="sec-identity">
+          <div class="card-head">
+            <span class="card-idx">02</span>
+            <div class="card-head-text">
+              <h2>Identity</h2>
+              <p class="card-sub">The model writes as you. Who you are, what you build, the opinions you actually hold. The sharper this is, the better the replies.</p>
+            </div>
+          </div>
+          <div class="field">
+            <label for="profile">Context profile</label>
+            <textarea id="profile" rows="9" placeholder="Who you are, what you build, the opinions you hold..."></textarea>
+          </div>
+        </section>
+
+        <section class="card" id="sec-products">
+          <div class="card-head">
+            <span class="card-idx">03</span>
+            <div class="card-head-text">
+              <h2>Products &amp; projects</h2>
+              <p class="card-sub">What you're building and marketing. Replies only mention one when a post is genuinely relevant — a forced plug is worse than no mention. In the panel, pick a product under <strong>Promote</strong> to write posts about it.</p>
+            </div>
+          </div>
+
+          <div id="productItems" class="product-items"></div>
+          <p id="productEmpty" class="product-empty">No products yet. Create one so penn AI can mention and promote your work.</p>
+
+          <div class="product-toolbar">
+            <button id="productAdd" type="button" class="secondary">+ Create product</button>
+          </div>
+
+          <div id="productEditor" class="product-editor hidden">
+            <div class="field">
+              <label for="prodName">Name</label>
+              <input id="prodName" type="text" placeholder="e.g. spec-writer">
+            </div>
+            <div class="field">
+              <label for="prodDesc">Description</label>
+              <textarea id="prodDesc" rows="4" placeholder="What it does, who it's for, what makes it different. The model writes from this."></textarea>
+            </div>
+            <div class="field">
+              <label for="prodMention">When to mention it</label>
+              <input id="prodMention" type="text" placeholder="e.g. threads about agent workflows or AI coding reliability">
+            </div>
+            <div class="field">
+              <label for="prodMedia">Photos</label>
+              <div id="prodMediaPreview" class="media-preview"></div>
+              <label class="media-add" for="prodMedia">+ Add images</label>
+              <input id="prodMedia" class="file-input" type="file" accept="image/*" multiple>
+              <p class="field-note">Stored locally, sent only with a generation request when writing about this product, so the model describes the real thing. Up to 4 images; video is not yet readable by the models.</p>
+            </div>
+            <div class="product-editor-actions">
+              <button id="prodCancel" type="button" class="secondary">Cancel</button>
+              <button id="prodSave" type="button" class="primary">Save product</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" id="sec-voice">
+          <div class="card-head">
+            <span class="card-idx">04</span>
+            <div class="card-head-text">
+              <h2>Voice &amp; guardrails</h2>
+              <p class="card-sub">The highest-leverage section. Paste a handful of your real posts — the model mimics their rhythm, casing, and punctuation. Then list what it must never say.</p>
+            </div>
+          </div>
+
           <div class="field">
             <label for="voice">Writing examples and tone</label>
-            <textarea id="voice" rows="7" placeholder="Tone, example phrasings, how you actually talk..."></textarea>
+            <textarea id="voice" rows="8" placeholder="Paste 5-10 of your actual posts here, one per line. Then describe your tone in a few words."></textarea>
+            <p class="field-note">Real posts beat adjectives. "Direct, dry" helps; ten of your actual tweets help far more.</p>
+          </div>
+
+          <div class="field-grid">
+            <div class="field">
+              <label for="forbidden">Forbidden phrases</label>
+              <textarea id="forbidden" rows="7" placeholder="One phrase per line to ban from replies..."></textarea>
+            </div>
+            <div class="field">
+              <label for="badExamples">Never sound like this</label>
+              <textarea id="badExamples" rows="7" placeholder="Paste cringe replies you never want to write..."></textarea>
+              <p class="field-note">Anti-examples. The model avoids this posture and style.</p>
+            </div>
           </div>
         </section>
 
-        <section class="card">
-          <div class="card-head"><h2>Forbidden</h2></div>
+        <section class="card card-accent" id="sec-playground">
+          <div class="card-head">
+            <span class="card-idx">05</span>
+            <div class="card-head-text">
+              <h2>Playground</h2>
+              <p class="card-sub">Tune your profile without leaving settings. Paste any post, generate replies, tweak your voice, run it again. Running saves your current edits first.</p>
+            </div>
+          </div>
+
           <div class="field">
-            <label for="forbidden">Forbidden phrases or behaviors</label>
-            <textarea id="forbidden" rows="7" placeholder="One phrase per line to ban from replies..."></textarea>
+            <label for="pgPost">A post to reply to</label>
+            <textarea id="pgPost" rows="4">Maya Chen @mayabuilds:
+hot take: most AI coding agents fail because nobody writes down what "done" means before they start</textarea>
           </div>
-        </section>
-      </div>
 
-      <section class="card">
-        <div class="card-head">
-          <h2>Never sound like this</h2>
-          <p class="card-sub">Anti-examples. The model avoids this posture and style.</p>
-        </div>
-        <div class="field">
-          <label for="badExamples">Never sound like this</label>
-          <textarea id="badExamples" rows="6" placeholder="Paste cringe replies you never want to write..."></textarea>
-        </div>
-      </section>
-    </main>
+          <div class="pg-row">
+            <input id="pgNote" type="text" placeholder="Optional: steer it (e.g. be skeptical)">
+            <button id="pgRun" type="button" class="primary">Generate replies</button>
+          </div>
+
+          <div id="pgOutput" class="pg-output"></div>
+        </section>
+      </main>
+    </div>
 
     <footer class="actionbar">
       <div class="actionbar-inner">

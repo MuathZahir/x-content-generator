@@ -10,6 +10,7 @@ const state = {
   activeComposer: null,
   lastContext: null,
   view: "reply",
+  composeMode: "grow",
   draft: null
 };
 
@@ -227,28 +228,28 @@ async function sendToBackground(payload, fallbackError) {
 
 function generateReplies({ note, threadText, images }) {
   return sendToBackground(
-    { type: "contextreply.generate", note, threadText, images },
+    { type: "pennai.generate", note, threadText, images },
     "Reply generation failed."
   );
 }
 
-function sendCompose({ idea, feed, trends }) {
+function sendCompose({ idea, feed, trends, productId }) {
   return sendToBackground(
-    { type: "contextreply.compose", idea, feed, trends },
+    { type: "pennai.compose", idea, feed, trends, productId },
     "Post generation failed."
   );
 }
 
 function sendRefine({ kind, currentText, instruction, baseContext, images, history }) {
   return sendToBackground(
-    { type: "contextreply.refine", kind, currentText, instruction, baseContext, images, history },
+    { type: "pennai.refine", kind, currentText, instruction, baseContext, images, history },
     "Refine failed."
   );
 }
 
 // --- Panel rendering --------------------------------------------------------
 
-function showMessage(output, text, className = "contextreply-error") {
+function showMessage(output, text, className = "pennai-error") {
   const message = document.createElement("div");
   message.className = className;
   message.textContent = text;
@@ -270,13 +271,70 @@ function setView(view) {
   if (!state.els) return;
   state.view = view;
   const { replyGroup, composeGroup, iterateGroup, output, replyingTo } = state.els;
-  replyGroup.classList.toggle("contextreply-hidden", view !== "reply");
-  composeGroup.classList.toggle("contextreply-hidden", view !== "compose");
-  iterateGroup.classList.toggle("contextreply-hidden", view !== "iterate");
-  output.classList.toggle("contextreply-hidden", view === "iterate");
+  replyGroup.classList.toggle("pennai-hidden", view !== "reply");
+  composeGroup.classList.toggle("pennai-hidden", view !== "compose");
+  iterateGroup.classList.toggle("pennai-hidden", view !== "iterate");
+  output.classList.toggle("pennai-hidden", view === "iterate");
 
-  if (view === "compose") replyingTo.textContent = "New post";
-  else if (view === "iterate") replyingTo.textContent = "Refining draft";
+  if (view === "compose") {
+    replyingTo.textContent = state.composeMode === "promote" ? "Promote a product" : "New post";
+  } else if (view === "iterate") {
+    replyingTo.textContent = "Refining draft";
+  }
+}
+
+const COMPOSE_PLACEHOLDERS = {
+  grow: "What do you want to post about? A rough idea is enough.",
+  promote: "Optional angle: launch, lesson learned, a real result, behind the scenes…"
+};
+
+function setComposeMode(mode) {
+  state.composeMode = mode;
+  if (!state.els) return;
+  const { growTab, promoteTab, productSelect, idea, replyingTo } = state.els;
+  growTab.classList.toggle("pennai-segment-active", mode === "grow");
+  promoteTab.classList.toggle("pennai-segment-active", mode === "promote");
+  productSelect.classList.toggle("pennai-hidden", mode !== "promote");
+  idea.placeholder = COMPOSE_PLACEHOLDERS[mode] || COMPOSE_PLACEHOLDERS.grow;
+  if (state.view === "compose") {
+    replyingTo.textContent = mode === "promote" ? "Promote a product" : "New post";
+  }
+  if (mode === "promote") populateProducts();
+}
+
+async function populateProducts() {
+  const select = state.els?.productSelect;
+  if (!select) return;
+
+  let products = [];
+  try {
+    const stored = await chrome.storage.local.get({ productList: [] });
+    products = Array.isArray(stored.productList) ? stored.productList : [];
+  } catch (error) {
+    products = [];
+  }
+
+  const previous = select.value;
+  select.textContent = "";
+  if (!products.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No products yet — create one in Settings";
+    select.appendChild(option);
+    select.disabled = true;
+    return;
+  }
+
+  select.disabled = false;
+  for (const product of products) {
+    const option = document.createElement("option");
+    option.value = product.id;
+    option.textContent = product.name;
+    select.appendChild(option);
+  }
+  if (previous && products.some((product) => product.id === previous)) {
+    select.value = previous;
+  }
 }
 
 function updateContextPreview(composer) {
@@ -313,21 +371,28 @@ function setActiveComposer(composer) {
 
 function renderOption(output, option, refineContext) {
   const item = document.createElement("div");
-  item.className = "contextreply-option";
+  item.className = "pennai-option";
 
   if (option.label) {
     const label = document.createElement("div");
-    label.className = "contextreply-option-label";
+    label.className = "pennai-option-label";
     label.textContent = option.label;
     item.appendChild(label);
   }
 
   const text = document.createElement("div");
-  text.className = "contextreply-option-text";
+  text.className = "pennai-option-text";
   text.textContent = option.text;
 
+  let over = null;
+  if (String(option.text || "").length > 280) {
+    over = document.createElement("div");
+    over.className = "pennai-overlimit";
+    over.textContent = `${option.text.length} / 280, too long. Refine it shorter.`;
+  }
+
   const actions = document.createElement("div");
-  actions.className = "contextreply-option-actions";
+  actions.className = "pennai-option-actions";
 
   const insertButton = document.createElement("button");
   insertButton.type = "button";
@@ -336,7 +401,7 @@ function renderOption(output, option, refineContext) {
 
   const copyButton = document.createElement("button");
   copyButton.type = "button";
-  copyButton.className = "contextreply-ghost";
+  copyButton.className = "pennai-ghost";
   copyButton.textContent = "Copy";
   copyButton.addEventListener("click", async () => {
     try {
@@ -355,13 +420,14 @@ function renderOption(output, option, refineContext) {
   if (refineContext) {
     const refineButton = document.createElement("button");
     refineButton.type = "button";
-    refineButton.className = "contextreply-ghost";
+    refineButton.className = "pennai-ghost";
     refineButton.textContent = "Refine";
     refineButton.addEventListener("click", () => enterIterate({ ...refineContext, currentText: option.text }));
     actions.appendChild(refineButton);
   }
 
-  item.append(text, actions);
+  if (over) item.append(text, over, actions);
+  else item.append(text, actions);
   output.appendChild(item);
 }
 
@@ -369,7 +435,7 @@ async function requestSuggestions({ context }) {
   if (!state.els) return;
   const { note, suggest, output } = state.els;
   suggest.disabled = true;
-  suggest.classList.toggle("contextreply-loading", true);
+  suggest.classList.toggle("pennai-loading", true);
   suggest.textContent = "Thinking…";
   output.textContent = "";
 
@@ -381,9 +447,9 @@ async function requestSuggestions({ context }) {
     });
 
     const gate = document.createElement("div");
-    gate.className = "contextreply-gate";
+    gate.className = "pennai-gate";
     if (result.relevance_gate?.mention_product) {
-      gate.classList.toggle("contextreply-gate-on", true);
+      gate.classList.toggle("pennai-gate-on", true);
       gate.textContent = `Product mention: yes — ${result.relevance_gate?.reason || ""}`.trim();
     } else {
       gate.textContent = `Product mention: no — ${result.relevance_gate?.reason || "not relevant here."}`.trim();
@@ -398,25 +464,31 @@ async function requestSuggestions({ context }) {
     showMessage(output, error.message);
   } finally {
     suggest.disabled = false;
-    suggest.classList.toggle("contextreply-loading", false);
+    suggest.classList.toggle("pennai-loading", false);
     suggest.textContent = "Suggest replies";
   }
 }
 
 async function composeDrafts() {
   if (!state.els) return;
-  const { idea, write, output } = state.els;
+  const { idea, write, output, productSelect } = state.els;
   const ideaText = idea.value.trim();
-  if (!ideaText) {
-    output.textContent = "";
+  const promote = state.composeMode === "promote";
+  const productId = promote ? productSelect.value : "";
+
+  output.textContent = "";
+  if (promote && !productId) {
+    showMessage(output, "Create a product in Settings first, then pick it here.");
+    return;
+  }
+  if (!promote && !ideaText) {
     showMessage(output, "Type what you want to post about first.");
     return;
   }
 
   write.disabled = true;
-  write.classList.toggle("contextreply-loading", true);
+  write.classList.toggle("pennai-loading", true);
   write.textContent = "Writing…";
-  output.textContent = "";
 
   try {
     let feed = [];
@@ -427,8 +499,9 @@ async function composeDrafts() {
       trends = getTrends();
     }
 
-    const result = await sendCompose({ idea: ideaText, feed, trends });
-    const refineContext = { surface: "compose", kind: "post", baseContext: ideaText, images: [] };
+    const result = await sendCompose({ idea: ideaText, feed, trends, productId });
+    const baseContext = ideaText || (promote ? `Promoting product: ${productSelect.selectedOptions?.[0]?.textContent || productId}` : "");
+    const refineContext = { surface: "compose", kind: "post", baseContext, images: [] };
     for (const option of result.options || []) {
       renderOption(output, option, refineContext);
     }
@@ -436,12 +509,20 @@ async function composeDrafts() {
     showMessage(output, error.message);
   } finally {
     write.disabled = false;
-    write.classList.toggle("contextreply-loading", false);
+    write.classList.toggle("pennai-loading", false);
     write.textContent = "Write post";
   }
 }
 
 // --- Iterate view -----------------------------------------------------------
+
+function updateDraftCount() {
+  if (!state.els) return;
+  const { draftText, draftCount } = state.els;
+  const length = String(draftText.value || "").length;
+  draftCount.textContent = `${length} / 280`;
+  draftCount.classList.toggle("pennai-count-over", length > 280);
+}
 
 function enterIterate(seed) {
   state.draft = {
@@ -456,6 +537,7 @@ function enterIterate(seed) {
     state.els.draftText.value = seed.currentText;
     state.els.instruction.value = "";
     state.els.iterateError.textContent = "";
+    updateDraftCount();
   }
   setView("iterate");
 }
@@ -477,7 +559,7 @@ async function runRefine() {
   }
 
   refine.disabled = true;
-  refine.classList.toggle("contextreply-loading", true);
+  refine.classList.toggle("pennai-loading", true);
   refine.textContent = "Refining…";
   iterateError.textContent = "";
 
@@ -494,12 +576,13 @@ async function runRefine() {
     state.draft.history.push({ instruction: instr, text: result.text });
     draftText.value = result.text;
     instruction.value = "";
+    updateDraftCount();
   } catch (error) {
     // Keep the previous draft untouched; just surface the problem.
     iterateError.textContent = error.message;
   } finally {
     refine.disabled = false;
-    refine.classList.toggle("contextreply-loading", false);
+    refine.classList.toggle("pennai-loading", false);
     refine.textContent = "Refine";
   }
 }
@@ -508,23 +591,23 @@ function ensurePanel() {
   if (state.panel) return state.els;
 
   const panel = document.createElement("div");
-  panel.className = "contextreply-panel contextreply-floating";
+  panel.className = "pennai-panel pennai-floating";
 
   // Header: brand + dismiss
   const header = document.createElement("div");
-  header.className = "contextreply-header";
+  header.className = "pennai-header";
 
   const brand = document.createElement("div");
-  brand.className = "contextreply-brand";
+  brand.className = "pennai-brand";
   const dot = document.createElement("span");
-  dot.className = "contextreply-dot";
+  dot.className = "pennai-dot";
   const brandName = document.createElement("span");
-  brandName.textContent = "ContextReply";
+  brandName.textContent = "penn AI";
   brand.append(dot, brandName);
 
   const dismiss = document.createElement("button");
   dismiss.type = "button";
-  dismiss.className = "contextreply-dismiss";
+  dismiss.className = "pennai-dismiss";
   dismiss.setAttribute("aria-label", "Hide");
   dismiss.textContent = "✕";
 
@@ -532,37 +615,37 @@ function ensurePanel() {
   panel.appendChild(header);
 
   const replyingTo = document.createElement("div");
-  replyingTo.className = "contextreply-replyingto";
+  replyingTo.className = "pennai-replyingto";
   replyingTo.textContent = "No post selected yet";
   panel.appendChild(replyingTo);
 
   // --- Reply group (note + suggest + context preview) ---
   const replyGroup = document.createElement("div");
-  replyGroup.className = "contextreply-group";
+  replyGroup.className = "pennai-group";
 
   const row = document.createElement("div");
-  row.className = "contextreply-row";
+  row.className = "pennai-row";
 
   const note = document.createElement("input");
   note.type = "text";
-  note.className = "contextreply-note";
+  note.className = "pennai-note";
   note.setAttribute("aria-label", "Optional note to steer the reply");
   note.placeholder = "Optional: steer it (e.g. make it sarcastic)";
   row.appendChild(note);
 
   const suggest = document.createElement("button");
   suggest.type = "button";
-  suggest.className = "contextreply-suggest";
+  suggest.className = "pennai-suggest";
   suggest.textContent = "Suggest replies";
   row.appendChild(suggest);
 
   replyGroup.appendChild(row);
 
   const details = document.createElement("details");
-  details.className = "contextreply-preview";
+  details.className = "pennai-preview";
   const summary = document.createElement("summary");
   const contextSummary = document.createElement("span");
-  contextSummary.className = "contextreply-context-summary";
+  contextSummary.className = "pennai-context-summary";
   contextSummary.textContent = "Context · No nearby post detected.";
   summary.appendChild(contextSummary);
   details.appendChild(summary);
@@ -572,19 +655,43 @@ function ensurePanel() {
 
   panel.appendChild(replyGroup);
 
-  // --- Compose group (idea + write) ---
+  // --- Compose group (mode + product + idea + write) ---
   const composeGroup = document.createElement("div");
-  composeGroup.className = "contextreply-compose contextreply-hidden";
+  composeGroup.className = "pennai-compose pennai-hidden";
+
+  const segment = document.createElement("div");
+  segment.className = "pennai-segment";
+  segment.setAttribute("role", "tablist");
+
+  const growTab = document.createElement("button");
+  growTab.type = "button";
+  growTab.className = "pennai-segment-btn pennai-segment-active";
+  growTab.textContent = "Grow";
+  growTab.title = "Post to grow your account";
+
+  const promoteTab = document.createElement("button");
+  promoteTab.type = "button";
+  promoteTab.className = "pennai-segment-btn";
+  promoteTab.textContent = "Promote";
+  promoteTab.title = "Post about one of your products";
+
+  segment.append(growTab, promoteTab);
+  composeGroup.appendChild(segment);
+
+  const productSelect = document.createElement("select");
+  productSelect.className = "pennai-product pennai-hidden";
+  productSelect.setAttribute("aria-label", "Product to promote");
+  composeGroup.appendChild(productSelect);
 
   const idea = document.createElement("textarea");
-  idea.className = "contextreply-idea";
+  idea.className = "pennai-idea";
   idea.setAttribute("aria-label", "What do you want to post about");
-  idea.placeholder = "What do you want to post about? A rough idea is enough.";
+  idea.placeholder = COMPOSE_PLACEHOLDERS.grow;
   composeGroup.appendChild(idea);
 
   const write = document.createElement("button");
   write.type = "button";
-  write.className = "contextreply-suggest";
+  write.className = "pennai-suggest";
   write.textContent = "Write post";
   composeGroup.appendChild(write);
 
@@ -592,44 +699,48 @@ function ensurePanel() {
 
   // --- Iterate group (editable draft + instruction) ---
   const iterateGroup = document.createElement("div");
-  iterateGroup.className = "contextreply-iterate contextreply-hidden";
+  iterateGroup.className = "pennai-iterate pennai-hidden";
 
   const draftText = document.createElement("textarea");
-  draftText.className = "contextreply-draft";
+  draftText.className = "pennai-draft";
   draftText.setAttribute("aria-label", "Draft");
   iterateGroup.appendChild(draftText);
 
+  const draftCount = document.createElement("div");
+  draftCount.className = "pennai-count";
+  iterateGroup.appendChild(draftCount);
+
   const iterateError = document.createElement("div");
-  iterateError.className = "contextreply-error contextreply-iterate-error";
+  iterateError.className = "pennai-error pennai-iterate-error";
   iterateGroup.appendChild(iterateError);
 
   const iterateRow = document.createElement("div");
-  iterateRow.className = "contextreply-row";
+  iterateRow.className = "pennai-row";
   const instruction = document.createElement("input");
   instruction.type = "text";
-  instruction.className = "contextreply-note";
+  instruction.className = "pennai-note";
   instruction.setAttribute("aria-label", "How should I change it");
   instruction.placeholder = "make it funnier, shorter, add a stat…";
   iterateRow.appendChild(instruction);
   const refine = document.createElement("button");
   refine.type = "button";
-  refine.className = "contextreply-suggest";
+  refine.className = "pennai-suggest";
   refine.textContent = "Refine";
   iterateRow.appendChild(refine);
   iterateGroup.appendChild(iterateRow);
 
   const iterateActions = document.createElement("div");
-  iterateActions.className = "contextreply-iterate-actions";
+  iterateActions.className = "pennai-iterate-actions";
   const back = document.createElement("button");
   back.type = "button";
-  back.className = "contextreply-back contextreply-ghost";
+  back.className = "pennai-back pennai-ghost";
   back.textContent = "← Back";
   const insertDraft = document.createElement("button");
   insertDraft.type = "button";
   insertDraft.textContent = "Insert";
   const copyDraft = document.createElement("button");
   copyDraft.type = "button";
-  copyDraft.className = "contextreply-ghost";
+  copyDraft.className = "pennai-ghost";
   copyDraft.textContent = "Copy";
   iterateActions.append(back, insertDraft, copyDraft);
   iterateGroup.appendChild(iterateActions);
@@ -638,7 +749,7 @@ function ensurePanel() {
 
   // --- Shared output ---
   const output = document.createElement("div");
-  output.className = "contextreply-output";
+  output.className = "pennai-output";
   panel.appendChild(output);
 
   document.body.appendChild(panel);
@@ -647,8 +758,8 @@ function ensurePanel() {
   state.els = {
     panel, replyingTo,
     replyGroup, note, suggest, preview: pre, contextSummary,
-    composeGroup, idea, write,
-    iterateGroup, draftText, instruction, refine, insertDraft, copyDraft, back, iterateError,
+    composeGroup, growTab, promoteTab, productSelect, idea, write,
+    iterateGroup, draftText, draftCount, instruction, refine, insertDraft, copyDraft, back, iterateError,
     output
   };
 
@@ -672,9 +783,12 @@ function ensurePanel() {
   });
 
   // Compose view
+  growTab.addEventListener("click", () => setComposeMode("grow"));
+  promoteTab.addEventListener("click", () => setComposeMode("promote"));
   write.addEventListener("click", composeDrafts);
 
   // Iterate view
+  draftText.addEventListener("input", updateDraftCount);
   refine.addEventListener("click", runRefine);
   instruction.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -697,7 +811,7 @@ function ensurePanel() {
   });
 
   dismiss.addEventListener("click", () => {
-    panel.classList.toggle("contextreply-hidden", true);
+    panel.classList.toggle("pennai-hidden", true);
   });
 
   return state.els;
@@ -705,11 +819,11 @@ function ensurePanel() {
 
 function showPanel() {
   ensurePanel();
-  state.panel.classList.toggle("contextreply-hidden", false);
+  state.panel.classList.toggle("pennai-hidden", false);
 }
 
 function hidePanel() {
-  if (state.panel) state.panel.classList.toggle("contextreply-hidden", true);
+  if (state.panel) state.panel.classList.toggle("pennai-hidden", true);
 }
 
 function scan() {
@@ -741,7 +855,7 @@ document.addEventListener("focusin", (event) => {
 });
 
 chrome.runtime.onMessage.addListener((message) => {
-  if (message?.type !== "contextreply.shortcut") return;
+  if (message?.type !== "pennai.shortcut") return;
 
   const focused = document.activeElement ? findComposer(document.activeElement) : null;
   const composer = focused || getAllComposers().at(-1);

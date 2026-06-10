@@ -23,10 +23,10 @@ Use this checklist after loading the project through `chrome://extensions` as an
 
 ## X composer flows
 
-- [x] Local fixture `tests/mock-x-page.html` shows the ContextReply panel.
-- [ ] Home feed reply composer shows the ContextReply panel.
-- [ ] Post detail page reply composer shows the ContextReply panel.
-- [ ] Reply modal/drawer shows the ContextReply panel.
+- [x] Local fixture `tests/mock-x-page.html` shows the penn AI panel.
+- [ ] Home feed reply composer shows the penn AI panel.
+- [ ] Post detail page reply composer shows the penn AI panel.
+- [ ] Reply modal/drawer shows the penn AI panel.
 - [x] Local fixture verifies multiple composers do not get duplicate panels.
 - [ ] Multiple composers do not get duplicate panels on X.
 

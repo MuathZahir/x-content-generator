@@ -3,22 +3,31 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ContextReply Mock Settings</title>
+    <title>penn AI Mock Settings</title>
     <link rel="stylesheet" href="../ui.css">
   </head>
   <body>
     <main class="settings">
       <header>
-        <h1>ContextReply</h1>
+        <h1>penn AI</h1>
         <p class="muted">Mock settings page for local browser QA.</p>
         <p class="muted"><a href="../docs/profile-guide.md" target="_blank">Profile guide</a></p>
         <p class="muted"><a href="../docs/x-safety-guide.md" target="_blank">X safety guide</a></p>
       </header>
 
       <section>
-        <label for="apiKey">OpenAI API key</label>
-        <input id="apiKey" type="password" autocomplete="off" placeholder="sk-...">
-        <p class="field-note">Stored locally in this browser. Profile exports omit the key. Revoke and replace any key that was pasted into chat, email, or a shared document.</p>
+        <div id="acctSignedOut" class="acct-line hidden">
+          <span class="acct-line-text">Not signed in.</span>
+          <button id="acctSignIn" type="button">Continue with Google</button>
+        </div>
+        <div id="acctSignedIn" class="acct-line hidden">
+          <span class="acct-line-text">Signed in as <strong id="acctWho"></strong> <span id="acctPlan" class="plan-chip"></span></span>
+          <span class="acct-line-actions">
+            <button id="acctUpgrade" type="button" class="secondary hidden">Upgrade to Pro</button>
+            <button id="acctSignOut" type="button" class="ghost-btn">Sign out</button>
+          </span>
+        </div>
+        <p id="acctUsage" class="field-note"></p>
       </section>
 
       <section>
@@ -30,7 +39,7 @@
         <input id="mockMode" type="checkbox">
         <label for="mockMode">Use mock replies for local QA</label>
       </section>
-      <p id="mockModeNote" class="field-note hidden">Mock mode uses local sample replies and does not call OpenAI.</p>
+      <p id="mockModeNote" class="field-note hidden">Mock mode uses local sample replies and does not call OpenAI or the penn AI API.</p>
 
       <section>
         <label for="profile">Context profile</label>
@@ -38,8 +47,27 @@
       </section>
 
       <section>
-        <label for="products">Products and projects</label>
-        <textarea id="products" rows="8"></textarea>
+        <label>Products and projects</label>
+        <div id="productItems" class="product-items"></div>
+        <p id="productEmpty" class="product-empty">No products yet.</p>
+        <div class="product-toolbar">
+          <button id="productAdd" type="button" class="secondary">+ Create product</button>
+        </div>
+        <div id="productEditor" class="product-editor hidden">
+          <label for="prodName">Name</label>
+          <input id="prodName" type="text">
+          <label for="prodDesc">Description</label>
+          <textarea id="prodDesc" rows="4"></textarea>
+          <label for="prodMention">When to mention it</label>
+          <input id="prodMention" type="text">
+          <div id="prodMediaPreview" class="media-preview"></div>
+          <label class="media-add" for="prodMedia">+ Add images</label>
+          <input id="prodMedia" class="file-input" type="file" accept="image/*" multiple>
+          <div class="product-editor-actions">
+            <button id="prodCancel" type="button" class="secondary">Cancel</button>
+            <button id="prodSave" type="button">Save product</button>
+          </div>
+        </div>
       </section>
 
       <section>
@@ -68,7 +96,7 @@
     </main>
 
     <script>
-      const storageKey = "contextreply-mock-storage";
+      const storageKey = "pennai-mock-storage";
       window.chrome = {
         storage: {
           local: {

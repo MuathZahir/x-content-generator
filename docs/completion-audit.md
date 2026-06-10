@@ -1,6 +1,6 @@
 # Completion Audit
 
-Objective: build ContextReply into a feature-complete, usable, useful product following an agile lifecycle, starting from the project idea in `conversation.md`.
+Objective: build penn AI into a feature-complete, usable, useful product following an agile lifecycle, starting from the project idea in `conversation.md`.
 
 ## Success Criteria
 
@@ -33,9 +33,24 @@ Objective: build ContextReply into a feature-complete, usable, useful product fo
 | Risk register exists | `docs/risk-register.md` | Complete |
 | Profile guidance exists | `docs/profile-guide.md` | Complete |
 | Release notes exist | `CHANGELOG.md` | Complete |
-| Package can be built | `npm run package`, `dist/contextreply.zip` | Complete |
+| Package can be built | `npm run package`, `dist/penn-ai.zip` | Complete |
 | Package integrity is verified | `npm run test:package` | Complete |
 | Full local release gate exists | `npm run release:check` | Complete |
+
+## 1.0.0 Production Additions
+
+| Criterion | Evidence | Status |
+| --- | --- | --- |
+| Hosted API holds the model key; no key in the client | `server/src/openai.js`, `scripts/validate.js` (asserts no `api.openai.com` / `apiKey` in client) | Complete |
+| Server deployed with Postgres | Railway project `penn-ai` (`api` + `Postgres`), `/healthz` returns ok | Verified live |
+| Google sign-in via Better Auth | `server/src/auth.js`, `/connect` page | Implemented; needs `GOOGLE_CLIENT_ID/SECRET` env |
+| Extension pairing flow (no cookies, token hashed at rest) | `server/src/db.js`, `background.js`, `/v1/device/*` | Verified live (pairing endpoint smoke-tested) |
+| Payments via Polar (MoR) with free/pro plans | `server/src/auth.js`, `server/src/quota.js`, `/upgrade` | Implemented; needs Polar env vars |
+| Daily quotas + burst limits + size limits + image allowlist | `server/src/quota.js`, `server/src/index.js`, `server/src/openai.js`, `server/test/server-test.js` | Complete |
+| Server-side prompt/policy parity with 0.2.x | `server/src/prompts.js`, `server/src/policy.js`, `server/test/server-test.js` | Complete |
+| Popup account hub (sign-in, plan, usage, upgrade) | `popup.html`, `popup.js` | Complete |
+| Hosted privacy policy + terms | `/privacy`, `/terms` | Verified live |
+| Store-ready package with icons | `icons/`, `dist/penn-ai.zip`, `docs/chrome-store-listing.md` | Complete |
 
 ## Verification Commands
 
@@ -53,23 +68,23 @@ safety audit ok
 content dom test ok
 options dom test ok
 background test ok
+docs link test ok
+server tests ok
 package integrity ok
 ```
 
 ## Remaining Gaps
 
-These are not closed because they require external/live access:
+These are not closed because they require credentials or accounts only the owner can create:
 
 | Gap | Required input | Playbook |
 | --- | --- | --- |
-| Authenticated X home feed composer QA | Authenticated X browser session | `docs/live-qa-playbook.md` |
-| Authenticated X post-detail composer QA | Authenticated X browser session | `docs/live-qa-playbook.md` |
-| Authenticated X modal/drawer composer QA | Authenticated X browser session | `docs/live-qa-playbook.md` |
-| Copy action specifically on X/HTTPS | Authenticated X browser session | `docs/live-qa-playbook.md` |
-| Live OpenAI generation | Valid `OPENAI_API_KEY` | `docs/live-qa-playbook.md`, `npm run smoke:openai` |
+| Live generation end-to-end | `OPENAI_API_KEY` on the Railway `api` service | `server/README.md`, then `npm run smoke:api` |
+| Google sign-in live | Google Cloud OAuth client + env vars | `server/README.md` |
+| Checkout/billing live | Polar org, products, webhook + env vars | `server/README.md` |
+| Authenticated X composer QA (feed, post detail, modal) | Authenticated X browser session | `docs/live-qa-playbook.md` |
+| Chrome Web Store submission | Developer account, screenshots, $5 fee | `docs/chrome-store-listing.md` |
 
 ## Completion Decision
 
-The local MVP is implemented, packaged, documented, and locally verified.
-
-The overall objective is not fully complete because release readiness still depends on authenticated X QA and live OpenAI QA.
+The product is code-complete and deployed: hosted API live on Railway, client keyless, plans and quotas enforced, package built and integrity-checked. Publishing is blocked only on owner-held credentials (OpenAI key, Google OAuth client, Polar account) and the store submission itself.

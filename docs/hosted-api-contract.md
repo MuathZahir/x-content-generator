@@ -1,27 +1,63 @@
 # Hosted API Contract
 
-This contract describes the future hosted generation endpoint from `docs/production-api-strategy.md`. It is not implemented in the local MVP.
+The hosted generation API described in `docs/production-api-strategy.md` is now implemented in `server/` and deployed on Railway. This document is the contract the extension (`background.js`) codes against.
 
-## Endpoint
-
-```http
-POST /api/replies/generate
-```
+Base URL: `https://heypenn.com`
 
 ## Authentication
 
-Required. The extension should send a ContextReply user/session token, not an OpenAI API key.
+Every `/v1` endpoint (except device pairing) requires a penn AI device token, never an OpenAI key:
 
 ```http
-Authorization: Bearer <contextreply-token>
+Authorization: Bearer penn_<token>
 ```
 
-## Request
+Tokens are minted through the device-pairing flow and can be revoked server-side. A `401` means the extension should clear its stored token and show the sign-in prompt.
+
+## Device pairing
+
+```http
+POST /v1/device/new            -> { "code": "A1B2-C3D4", "secret": "..." }
+POST /v1/device/approve        -> { "ok": true }        (browser session cookie + { code })
+POST /v1/device/claim          -> { "token": "penn_..." } ({ code, secret }; { "pending": true } until approved)
+```
+
+The extension keeps `secret` local and polls `claim`; the signed-in browser tab (`/connect?code=...`) calls `approve`. The token is minted only at claim time and only its hash is stored.
+
+## Account
+
+```http
+GET /v1/me
+```
 
 ```json
 {
-  "mode": "Softly mention my project",
+  "user": { "id": "...", "name": "...", "email": "...", "image": "..." },
+  "plan": "free",
+  "usedToday": 2,
+  "remainingToday": 3,
+  "limits": { "dailyCalls": 5, "models": ["gpt-5.4-mini"], "webSearch": false, "compose": false }
+}
+```
+
+`POST /v1/signout` revokes the presented token.
+
+## Generation
+
+```http
+POST /v1/generate   (replies)
+POST /v1/compose    (original posts; Pro only)
+POST /v1/refine     (draft refinement)
+```
+
+All three accept the user's profile per request; the server never stores it:
+
+```json
+{
+  "note": "optional steering note",
   "threadText": "Visible X/Twitter context shown to the user before generation.",
+  "images": ["https://pbs.twimg.com/media/..."],
+  "model": "gpt-5.4",
   "profile": {
     "context": "Who I am, opinions, stable background.",
     "products": "Product/project blocks with mention rules.",
@@ -32,7 +68,9 @@ Authorization: Bearer <contextreply-token>
 }
 ```
 
-## Response
+`/v1/compose` additionally takes `idea`, `feed`, `trends`, `feedGrounding`, `webSearch`, and an optional `product` object (name, description, mention, media). `/v1/refine` takes `kind`, `currentText`, `instruction`, `baseContext`, `history`.
+
+Generate response:
 
 ```json
 {
@@ -42,25 +80,23 @@ Authorization: Bearer <contextreply-token>
     "mention_style": "Do not mention a product."
   },
   "options": [
-    {
-      "label": "Helpful",
-      "text": "Reply option text."
-    }
+    { "label": "dry", "text": "Reply option text." }
   ]
 }
 ```
 
-## Server Requirements
+## Server guarantees
 
-- Enforce authentication.
-- Enforce request body size limits.
-- Enforce per-user rate limits.
-- Do not log raw `threadText` or profile fields by default.
-- Apply the same JSON parsing and safety-filter contract as `background.js`.
-- Return 3-5 options after filtering.
-- Never post to X/Twitter.
+- Authentication on every generation call.
+- Request body limit (3 MB), per-field length clamps, image-source allowlist (X media CDN + small data URLs only).
+- Per-user burst limits plus durable daily quotas per plan; `DISABLE_GENERATION=1` is the kill switch.
+- The model is resolved server-side from the user's plan; the requested model is only honored when entitled.
+- Raw `threadText` and profile fields are never logged or stored; logs carry route, status, latency, and user id only.
+- The same JSON parsing and anti-AI-tell safety-filter contract as the original `background.js` (ported to `server/src/policy.js`, parity-tested in `server/test/server-test.js`).
+- 3-5 options after filtering.
+- Never posts to X/Twitter.
 
-## Error Shape
+## Errors
 
 ```json
 {
@@ -71,15 +107,8 @@ Authorization: Bearer <contextreply-token>
 }
 ```
 
-Recommended error codes:
+Codes: `unauthorized` (401), `upgrade_required` and `free_limit_reached` (402), `rate_limited` (429), `invalid_request` (400), `model_unavailable` (503), `generation_failed` / `safety_filter_failed` (502).
 
-- `unauthorized`
-- `rate_limited`
-- `invalid_request`
-- `model_unavailable`
-- `generation_failed`
-- `safety_filter_failed`
+## Extension behavior
 
-## Extension Behavior
-
-The extension should treat hosted errors the same way it treats local background errors today: show a visible error in the panel and never insert or post anything automatically.
+The extension treats hosted errors the same way it treated local background errors: show a visible error in the panel and never insert or post anything automatically. A 401 clears the stored token; 402 messages carry the upgrade pitch verbatim.

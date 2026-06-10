@@ -1,16 +1,28 @@
 {
   "manifest_version": 3,
-  "name": "ContextReply",
-  "description": "A human-in-the-loop X reply copilot that uses your context only when relevant.",
-  "version": "0.1.0",
-  "permissions": ["storage", "clipboardWrite", "tabs"],
-  "host_permissions": ["https://api.openai.com/*"],
+  "name": "penn AI",
+  "description": "A human-in-the-loop X reply copilot that drafts replies and posts in your voice, using your context only when relevant.",
+  "version": "1.0.0",
+  "permissions": ["storage", "unlimitedStorage", "clipboardWrite", "tabs"],
+  "host_permissions": ["https://heypenn.com/*"],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "ContextReply",
-    "default_popup": "popup.html"
+    "default_title": "penn AI",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "options_page": "options.html",
   "commands": {

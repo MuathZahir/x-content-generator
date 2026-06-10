@@ -3,18 +3,60 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ContextReply</title>
+    <title>penn AI</title>
     <link rel="stylesheet" href="ui.css">
   </head>
   <body class="popup">
     <main>
       <div class="brand">
         <span class="brand-dot"></span>
-        <span class="brand-name">ContextReply</span>
+        <span class="brand-name">penn AI</span>
+        <span id="planChip" class="plan-chip hidden"></span>
       </div>
-      <p class="muted">Open a reply composer on X, then use the ContextReply panel beside it. Press <strong>Alt+Shift+R</strong> for instant suggestions.</p>
-      <a class="button primary" href="options.html" target="_blank">Edit profile</a>
-      <p class="muted popup-link"><a href="docs/x-safety-guide.md" target="_blank">X safety guide</a></p>
+
+      <!-- Signed out -->
+      <section id="signedOut" class="acct hidden">
+        <p class="muted">Sign in to generate replies. Free plan included, no card needed.</p>
+        <button id="signIn" class="button primary" type="button">
+          <span class="g-badge">G</span> Continue with Google
+        </button>
+        <p id="pendingNote" class="acct-note hidden">Waiting for the sign-in tab… finish there, then come back.</p>
+      </section>
+
+      <!-- Signed in -->
+      <section id="signedIn" class="acct hidden">
+        <div class="acct-row">
+          <img id="avatar" class="acct-avatar hidden" alt="">
+          <div class="acct-id">
+            <span id="acctName" class="acct-name"></span>
+            <span id="acctEmail" class="acct-email"></span>
+          </div>
+        </div>
+
+        <div class="usage">
+          <div class="usage-head">
+            <span class="usage-label">Today</span>
+            <span id="usageCount" class="usage-count">–</span>
+          </div>
+          <div class="usage-track"><div id="usageFill" class="usage-fill"></div></div>
+          <p id="usageHint" class="acct-note"></p>
+        </div>
+
+        <button id="upgrade" class="button primary hidden" type="button">Upgrade to Pro, $9/mo</button>
+        <button id="portal" class="button secondary hidden" type="button">Manage billing</button>
+      </section>
+
+      <!-- Error -->
+      <p id="acctError" class="acct-error hidden"></p>
+
+      <p class="muted usage-tip">Open a reply on X and use the panel, or press <strong>Alt+Shift+R</strong>.</p>
+
+      <div class="popup-actions">
+        <a class="button secondary" href="options.html" target="_blank">Edit profile</a>
+        <button id="signOut" class="acct-signout hidden" type="button">Sign out</button>
+      </div>
+      <p class="muted popup-link"><a href="docs/x-safety-guide.md" target="_blank">X safety guide</a> · <a id="privacyLink" href="#">Privacy</a></p>
     </main>
+    <script src="popup.js"></script>
   </body>
 </html>

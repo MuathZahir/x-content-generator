@@ -1,0 +1,24 @@
+{
+  "name": "penn-ai-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "penn AI hosted API: auth, billing, and OpenAI proxy. No model keys ever ship to the client.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "migrate": "npx @better-auth/cli@latest migrate -y --config src/auth.js",
+    "check": "node --check src/index.js && node --check src/auth.js && node --check src/db.js && node --check src/openai.js && node --check src/prompts.js && node --check src/policy.js && node --check src/quota.js && node --check src/pages.js && node test/server-test.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.0",
+    "@polar-sh/better-auth": "^1.8.4",
+    "@polar-sh/sdk": "^0.47.0",
+    "better-auth": "^1.3.27",
+    "hono": "^4.7.0",
+    "pg": "^8.16.0"
+  }
+}

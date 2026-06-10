@@ -71,7 +71,7 @@ Verify package integrity:
 npm run test:package
 ```
 
-The output is `dist/contextreply.zip`.
+The output is `dist/penn-ai.zip`.
 
 ## Release Handoff
 
@@ -81,4 +81,4 @@ Before considering a release ready:
 2. Complete all unchecked items in `docs/release-checklist.md`.
 3. Record evidence in `docs/qa-results.md`.
 4. Update `CHANGELOG.md` if behavior changed.
-5. Rebuild `dist/contextreply.zip`.
+5. Rebuild `dist/penn-ai.zip`.
