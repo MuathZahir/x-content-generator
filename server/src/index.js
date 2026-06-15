@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { bodyLimit } from "hono/body-limit";
+import { cors } from "hono/cors";
 import { auth } from "./auth.js";
 import {
   bootstrap,
@@ -10,8 +11,9 @@ import {
   resolveToken,
   revokeToken
 } from "./db.js";
-import { getEntitlements, authorizeCall, QuotaError, PLANS } from "./quota.js";
-import { generateReplies, generatePost, refineDraft } from "./openai.js";
+import { getEntitlements, authorizeCall, refundCall, QuotaError, PLANS } from "./quota.js";
+import { generateReplies, generatePost, refineDraft, extractProduct } from "./openai.js";
+import { fetchPageText } from "./fetchPage.js";
 import {
   landingPage,
   connectPage,
@@ -32,6 +34,21 @@ app.use("*", async (c, next) => {
   c.header("Referrer-Policy", "no-referrer");
   c.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 });
+
+// CORS for the browser extension. Requests carry an Authorization: Bearer
+// header (not a CORS-safelisted header), so the browser sends a preflight that
+// the app must answer — otherwise fetch fails before the real request, even
+// though the extension is the only legitimate caller. We reflect any
+// chrome-extension:// origin: the API is authenticated by Bearer token, so a
+// permissive origin grants no access on its own. Without this, calls work only
+// from a domain listed in the extension's host_permissions (heypenn.com) and
+// break against any other origin, e.g. the Railway-generated URL.
+app.use("/v1/*", cors({
+  origin: (origin) => (origin && origin.startsWith("chrome-extension://") ? origin : ""),
+  allowMethods: ["GET", "POST", "OPTIONS"],
+  allowHeaders: ["Authorization", "Content-Type"],
+  maxAge: 86400
+}));
 
 // Product photos arrive as data URLs (≤4 × ~150 KB), so 3 MB covers the worst
 // legitimate request with headroom.
@@ -235,7 +252,9 @@ const LIMITS = {
   profileField: 8_000,
   feedPosts: 40,
   trends: 10,
-  history: 12
+  history: 12,
+  extractUrl: 2_000,
+  extractText: 8_000
 };
 
 function clip(value, max) {
@@ -289,6 +308,11 @@ async function handleGeneration(c, kind, run) {
     const result = await run(body, grant);
     return c.json(result);
   } catch (error) {
+    // The reservation in authorizeCall already counted this call. The user got
+    // no draft, so give it back before surfacing the error.
+    await refundCall(userId).catch((refundError) => {
+      console.error(`refund failed for ${userId}: ${refundError.message}`);
+    });
     const code = error.code || "generation_failed";
     const status = code === "rate_limited" ? 429 : code === "model_unavailable" ? 503 : 502;
     return apiError(c, status, code, error.message || "Generation failed.");
@@ -345,6 +369,86 @@ app.post("/v1/refine", (c) =>
     })
   )
 );
+
+// Reads a product URL (or pasted text) and drafts {name, description, mention}
+// for the extension's product editor. Free, counted against the daily allowance
+// like a generation, and always on the cheap model regardless of plan.
+app.post("/v1/extract", async (c) => {
+  if (process.env.DISABLE_GENERATION === "1") {
+    return apiError(c, 503, "model_unavailable", "Extraction is paused for maintenance. Back shortly.");
+  }
+  const userId = await requireUser(c);
+  if (!userId) return apiError(c, 401, "unauthorized", "Sign in from the extension popup.");
+  if (overBurst(`extract:${userId}`, 10, 60 * 1000)) {
+    return apiError(c, 429, "rate_limited", "Too many requests at once. Give it a few seconds.");
+  }
+
+  let body;
+  try {
+    body = await c.req.json();
+  } catch {
+    return apiError(c, 400, "invalid_request", "Body must be JSON.");
+  }
+
+  const url = clip(body.url, LIMITS.extractUrl).trim();
+  const pasted = clip(body.text, LIMITS.extractText).trim();
+  if (!url && !pasted) {
+    return apiError(c, 400, "invalid_request", "Provide a product URL or pasted details.");
+  }
+
+  // Reserve a call up front so the daily cap stays atomic under concurrency;
+  // every early return below refunds it, so only a delivered draft is charged.
+  try {
+    await authorizeCall(userId, { kind: "extract", requestedModel: "", webSearch: false });
+  } catch (error) {
+    if (error instanceof QuotaError) {
+      const status = error.code === "upgrade_required" || error.code === "free_limit_reached" ? 402 : 429;
+      return apiError(c, status, error.code, error.message);
+    }
+    throw error;
+  }
+
+  let source = "";
+  let lowConfidence = false;
+
+  if (pasted) {
+    source = `Notes the maker pasted:\n${pasted}`;
+  } else {
+    let page;
+    try {
+      page = await fetchPageText(url);
+    } catch (error) {
+      await refundCall(userId).catch(() => {});
+      const ssrf = error.code === "ssrf_blocked";
+      return apiError(c, ssrf ? 400 : 422, ssrf ? "invalid_request" : "fetch_failed", error.message || "Could not read that page.");
+    }
+    if (page.thin) {
+      await refundCall(userId).catch(() => {});
+      return apiError(c, 422, "thin_source", "Couldn't read enough from that page. Paste a description instead.");
+    }
+    source = page.source;
+    lowConfidence = page.lowConfidence;
+  }
+
+  try {
+    const product = await extractProduct({ source, model: "gpt-5.4-mini" });
+    return c.json({
+      product: {
+        name: clip(product.name, 200),
+        description: clip(product.description, 2000),
+        mention: clip(product.mention, 500)
+      },
+      lowConfidence
+    });
+  } catch (error) {
+    await refundCall(userId).catch((refundError) => {
+      console.error(`refund failed for ${userId}: ${refundError.message}`);
+    });
+    const code = error.code || "extract_failed";
+    const status = code === "rate_limited" ? 429 : code === "model_unavailable" ? 503 : 502;
+    return apiError(c, status, code, error.message || "Extraction failed.");
+  }
+});
 
 app.notFound((c) => apiError(c, 404, "invalid_request", "No such endpoint."));
 app.onError((error, c) => {

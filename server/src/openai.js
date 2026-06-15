@@ -4,13 +4,16 @@ import {
   SYSTEM_PROMPT,
   POST_SYSTEM_PROMPT,
   REFINE_SYSTEM_PROMPT,
+  EXTRACT_SYSTEM_PROMPT,
   buildReplyUserText,
   buildPostInput,
-  buildRefineUserText
+  buildRefineUserText,
+  buildExtractInput
 } from "./prompts.js";
 import {
   parseReplyResult,
   parseRefineResult,
+  parseExtractResult,
   enforceReplyPolicy,
   sanitizeReplyText,
   violatesReplyPolicy
@@ -195,7 +198,47 @@ export async function generatePost({ idea, feed, trends, product, profile, feedG
   return withQualityRetry(async () => {
     const data = await openaiFetch("/responses", body);
     const result = parseReplyResult(extractResponsesText(data), { requireGate: false });
-    return enforceReplyPolicy(result, { forbidden: profile.forbidden });
+    // Promote/compose is the product-promotion surface: links to the user's
+    // own product are the point, not a spam tell (unlike replies).
+    return enforceReplyPolicy(result, { forbidden: profile.forbidden, allowLinks: true });
+  });
+}
+
+const EXTRACT_OUTPUT_FORMAT = {
+  type: "json_schema",
+  name: "product_details",
+  strict: true,
+  schema: {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+      description: { type: "string" },
+      mention: { type: "string" }
+    },
+    required: ["name", "description", "mention"],
+    additionalProperties: false
+  }
+};
+
+// Distills already-fetched page text (or pasted notes) into a product profile.
+// Always runs on the cheap model; the caller fixes it regardless of plan.
+export async function extractProduct({ source, model }) {
+  const body = {
+    model,
+    instructions: EXTRACT_SYSTEM_PROMPT,
+    input: [{ role: "user", content: [{ type: "input_text", text: buildExtractInput({ source }) }] }],
+    text: { format: EXTRACT_OUTPUT_FORMAT }
+  };
+
+  if (isGpt5(model)) {
+    body.reasoning = { effort: "low" };
+  } else {
+    body.temperature = 0.3;
+  }
+
+  return withQualityRetry(async () => {
+    const data = await openaiFetch("/responses", body);
+    return parseExtractResult(extractResponsesText(data));
   });
 }
 
@@ -232,7 +275,8 @@ export async function refineDraft({ kind, currentText, instruction, baseContext,
   const { text } = parseRefineResult(data.choices?.[0]?.message?.content || "");
 
   const cleaned = sanitizeReplyText(text);
-  const violation = violatesReplyPolicy(cleaned, { forbidden: profile.forbidden });
+  // Refining a post keeps the same link allowance as composing one.
+  const violation = violatesReplyPolicy(cleaned, { forbidden: profile.forbidden, allowLinks: kind === "post" });
   if (violation) {
     const error = new Error(`Refined draft broke a rule (${violation}). Try a different instruction.`);
     error.code = "safety_filter_failed";

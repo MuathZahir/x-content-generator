@@ -36,22 +36,30 @@ function splitProductBlocks(products) {
     .filter(Boolean);
 }
 
-export function selectRelevantProducts(products, threadText, limit = 3) {
-  const threadTokens = new Set(tokenize(threadText));
-  const scored = splitProductBlocks(products).map((block, index) => {
-    const overlap = tokenize(block).filter((token) => threadTokens.has(token));
-    return { block, index, score: new Set(overlap).size };
-  });
+// Ranks the user's saved products by word overlap with the thread. Word
+// overlap is a crude proxy for relevance, so it decides ORDER, not visibility:
+// when `alwaysList` is set (the reply path) every product is surfaced to the
+// model, most-topically-related first, because the model judges semantic fit
+// far better than this token match and can only promote what it can see. The
+// stricter overlap>0 filter is kept for callers that want a hard gate.
+export function selectRelevantProducts(products, threadText, { limit = 3, alwaysList = false } = {}) {
+  const blocks = splitProductBlocks(products);
+  if (!blocks.length) return "No saved products to promote.";
 
-  const relevant = scored
-    .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score || a.index - b.index)
+  const threadTokens = new Set(tokenize(threadText));
+  const ranked = blocks
+    .map((block, index) => {
+      const overlap = tokenize(block).filter((token) => threadTokens.has(token));
+      return { block, index, score: new Set(overlap).size };
+    })
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+
+  const chosen = (alwaysList ? ranked : ranked.filter((item) => item.score > 0))
     .slice(0, limit)
     .map((item) => item.block);
 
-  return relevant.length > 0
-    ? relevant.join("\n\n")
-    : "No saved product/project appears directly relevant to the visible thread.";
+  if (chosen.length > 0) return chosen.join("\n\n");
+  return "No saved product/project appears directly relevant to the visible thread.";
 }
 
 // --- Prompts ----------------------------------------------------------------
@@ -128,7 +136,10 @@ REPLY SPECIFICS
 - If the person left a note for this reply, follow it, but never at the cost of sounding human.
 
 PRODUCT MENTIONS
-- Only mention one of the user's products when the product/project field contains a genuinely relevant match AND the post makes the mention feel natural and unforced. Otherwise set mention_product to false and just write a good reply. A forced plug is worse than no mention.
+- Part of your job is to spot when this exact conversation is a natural opening for something the user built, and take it. The user grows by being useful in threads where their product genuinely is the answer, so when the fit is real, work it in. Do not wait to be told.
+- It IS a real opening when the post: describes a problem one of the products solves, asks for a tool or recommendation in that space, vents a pain point the product addresses, or is about the exact topic the product is for. The per-product "Mention only when" rule, when present, names the situations the user wants it raised in, treat it as the trigger to watch for.
+- When there is a real opening, make EXACTLY ONE of the options work the product in the way a builder actually would: first person, from experience, helpful first ("i built a thing for exactly this", "ended up making X because this drove me nuts"), never an ad, never a feature list, never "check it out", never a link. The mention has to also be a good reply on its own. Set mention_product to true and name the post detail that made it fit. Keep every other option clean with no product in it.
+- Only mention a product when the product/project field contains a genuinely relevant match AND the post makes the mention feel natural and unforced. If nothing honestly fits, set mention_product to false and write five clean replies. A forced or generic plug is worse than no mention, but skipping an obvious, on-topic opening is a wasted chance to grow, so do not be timid when the fit is genuine.
 
 Return only valid JSON in exactly this shape:
 {
@@ -186,17 +197,31 @@ REFINE SPECIFICS
 Return only valid JSON in exactly this shape:
 { "text": "the refined draft" }`;
 
+export const EXTRACT_SYSTEM_PROMPT = `You read a product's landing page (or notes the maker pasted) and pull out a clean, factual profile of the product. A separate tool later uses this profile to write posts and replies about it, so accuracy matters more than polish.
+
+Return three fields:
+- name: the product's actual name, as the maker writes it. Short. No tagline, no company/legal suffix unless it is genuinely part of the name.
+- description: what the product is, what it does, who it is for, and what makes it different. A few plain sentences. Write it as factual notes the writer can build on, not marketing copy. No hype words, no calls to action, no first person.
+- mention: the specific situations where bringing this product up in a reply would feel natural and earned. Name concrete topics, the problems it solves, and the kind of person who has that problem. Be specific ("someone struggling to get an AI agent to follow a spec"), never broad ("anything about AI"). A broad rule gets the product forced into threads where it does not belong.
+
+Rules:
+- Use only what the source actually supports. Never invent features, numbers, customers, integrations, or claims. If the source is thin, keep the fields short rather than padding them.
+- If you genuinely cannot tell what the product is, put your best honest guess in name and keep description and mention brief.
+
+Return only valid JSON in exactly this shape:
+{ "name": "...", "description": "...", "mention": "..." }`;
+
 // --- Request text assembly ----------------------------------------------------
 
 // The extension sends profile fields per-request; nothing is persisted
 // server-side. `profile` here is { context, products, voice, forbidden,
 // badExamples } of plain strings.
-export function formatUserContext(profile, threadText = "") {
+export function formatUserContext(profile, threadText = "", { listProducts = false } = {}) {
   return `User context profile:
 ${profile.context || ""}
 
-Most relevant saved products/projects:
-${selectRelevantProducts(profile.products || "", threadText)}
+My products/projects I could promote (most relevant first):
+${selectRelevantProducts(profile.products || "", threadText, { alwaysList: listProducts })}
 
 Writing examples and tone:
 ${profile.voice || ""}
@@ -219,7 +244,7 @@ ${trimmedNote}`
     ? "\n\nImage(s) from the post are attached below. Read them and let them shape the reply."
     : "";
 
-  return `${formatUserContext(profile, threadText)}${noteBlock}
+  return `${formatUserContext(profile, threadText, { listProducts: true })}${noteBlock}
 
 The post I am replying to (last block is the one I am replying to):
 ${threadText}${imageNote}
@@ -294,4 +319,12 @@ New instruction:
 ${instruction}${imageNote}
 
 Return the refined draft as JSON now.`;
+}
+
+export function buildExtractInput({ source }) {
+  return `Source describing the product:
+
+${source}
+
+Extract the product profile as JSON now.`;
 }

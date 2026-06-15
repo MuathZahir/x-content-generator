@@ -119,10 +119,10 @@ const AI_TELL_PATTERNS = [
   { name: "forced wrap-up", pattern: /\b(?:in conclusion|bottom line|the takeaway)\b/i }
 ];
 
-function violatesReplyPolicy(text, settings) {
+function violatesReplyPolicy(text, settings, allowLinks = false) {
   const normalized = text.toLowerCase();
   if (/#\w+/.test(text)) return "hashtags are disabled";
-  if (/https?:\/\/|www\./i.test(text)) return "links are disabled";
+  if (!allowLinks && /https?:\/\/|www\./i.test(text)) return "links are disabled";
 
   const tell = AI_TELL_PATTERNS.find(({ pattern }) => pattern.test(text));
   if (tell) return `AI tell: ${tell.name}`;
@@ -131,10 +131,10 @@ function violatesReplyPolicy(text, settings) {
   return term ? `forbidden phrase: ${term}` : "";
 }
 
-function enforceReplyPolicy(result, { settings }) {
+function enforceReplyPolicy(result, { settings, allowLinks = false }) {
   const options = result.options
     .map((option) => ({ ...option, text: sanitizeReplyText(option.text) }))
-    .filter((option) => !violatesReplyPolicy(option.text, settings));
+    .filter((option) => !violatesReplyPolicy(option.text, settings, allowLinks));
 
   if (options.length < 3) {
     throw new Error("Generated replies violated too many safety rules. Try again.");
@@ -204,6 +204,21 @@ function generateMockPost({ idea, product }) {
 function mockRefine({ currentText, instruction }) {
   const tweak = String(instruction || "").trim();
   return { text: `${currentText} (${tweak || "refined"})` };
+}
+
+function generateMockProduct({ url, text }) {
+  const seed = String(text || url || "").trim();
+  const guess = seed
+    ? seed.replace(/^https?:\/\//, "").split(/[\/\s]/)[0] || "Sample Product"
+    : "Sample Product";
+  return {
+    product: {
+      name: guess.slice(0, 60),
+      description: "A maker tool that helps a specific audience get a job done faster. (Mock extraction; edit before saving.)",
+      mention: "threads where someone describes the exact problem this product solves"
+    },
+    lowConfidence: false
+  };
 }
 
 // --- Hosted API ----------------------------------------------------------------
@@ -409,7 +424,7 @@ async function generatePost({ idea, feed, trends, productId }) {
   const product = findProduct(settings, productId);
 
   if (settings.mockMode) {
-    return enforceReplyPolicy(generateMockPost({ idea, product }), { settings });
+    return enforceReplyPolicy(generateMockPost({ idea, product }), { settings, allowLinks: true });
   }
 
   if (productId && !product) {
@@ -434,7 +449,9 @@ async function generatePost({ idea, feed, trends, productId }) {
     profile: buildProfilePayload(settings)
   });
 
-  return enforceReplyPolicy(result, { settings });
+  // Compose/Promote posts may include the user's own product link; mirror the
+  // server's allowLinks so the client filter doesn't reject what the server kept.
+  return enforceReplyPolicy(result, { settings, allowLinks: true });
 }
 
 async function refineDraft({ kind, currentText, instruction, baseContext, images, history }) {
@@ -458,12 +475,23 @@ async function refineDraft({ kind, currentText, instruction, baseContext, images
   }
 
   const cleaned = sanitizeReplyText(text);
-  const violation = violatesReplyPolicy(cleaned, settings);
+  const violation = violatesReplyPolicy(cleaned, settings, kind === "post");
   if (violation) {
     throw new Error(`Refined draft broke a rule (${violation}). Try a different instruction.`);
   }
 
   return { text: cleaned };
+}
+
+// Reads a product page (or pasted text) via the hosted API and returns
+// { product: { name, description, mention }, lowConfidence } for the options
+// page to drop into the product editor for review.
+async function extractProduct({ url, text }) {
+  const settings = await chrome.storage.local.get(SETTINGS_DEFAULTS);
+  if (settings.mockMode) {
+    return generateMockProduct({ url, text });
+  }
+  return authedApi("/v1/extract", { url: url || "", text: text || "" });
 }
 
 // --- Messaging --------------------------------------------------------------
@@ -472,6 +500,7 @@ const HANDLERS = {
   "pennai.generate": generateReplies,
   "pennai.compose": generatePost,
   "pennai.refine": refineDraft,
+  "pennai.extract": extractProduct,
   "pennai.account": getAccount,
   "pennai.signin": startSignIn,
   "pennai.signout": signOut,
@@ -507,9 +536,11 @@ if (typeof module !== "undefined") {
     API_BASE,
     buildProfilePayload,
     enforceReplyPolicy,
+    extractProduct,
     findProduct,
     formatProductBlock,
     generateMockPost,
+    generateMockProduct,
     generateMockReplies,
     generatePost,
     generateReplies,

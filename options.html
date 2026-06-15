@@ -140,6 +140,18 @@
           </div>
 
           <div id="productEditor" class="product-editor hidden">
+            <div class="field product-autofill">
+              <label for="prodUrl">Auto-fill from your product page</label>
+              <div class="autofill-row">
+                <input id="prodUrl" type="url" placeholder="https://yourproduct.com">
+                <button id="prodAutofill" type="button" class="secondary">Auto-fill</button>
+              </div>
+              <p id="prodExtractStatus" class="field-note" aria-live="polite"></p>
+              <div id="prodPasteWrap" class="hidden">
+                <textarea id="prodPaste" rows="4" placeholder="Or paste your landing page text, README, or a short description here."></textarea>
+              </div>
+              <p class="field-note">penn AI reads the page and drafts the fields below for you to review. Pages it can't read fall back to the paste box. Uses one of your daily generations.</p>
+            </div>
             <div class="field">
               <label for="prodName">Name</label>
               <input id="prodName" type="text" placeholder="e.g. spec-writer">

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "penn AI",
   "description": "A human-in-the-loop X reply copilot that drafts replies and posts in your voice, using your context only when relevant.",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "permissions": ["storage", "unlimitedStorage", "clipboardWrite", "tabs"],
   "host_permissions": ["https://heypenn.com/*"],
   "icons": {

@@ -395,6 +395,7 @@ function openEditor(product) {
   byId("prodDesc").value = product ? product.description : "";
   byId("prodMention").value = product ? product.mention : "";
   renderMediaPreview();
+  resetExtractUI();
   byId("productEditor").classList.toggle("hidden", false);
   if (byId("prodName").focus) byId("prodName").focus();
 }
@@ -469,6 +470,76 @@ async function addEditorImages(event) {
   }
   event.target.value = "";
   renderMediaPreview();
+}
+
+// --- Product auto-fill (extract from URL or pasted text) ----------------------
+
+function setExtractStatus(text, kind) {
+  const status = byId("prodExtractStatus");
+  if (!status) return;
+  status.textContent = text || "";
+  if (status.classList) status.classList.toggle("dirty", kind === "dirty");
+}
+
+function revealPaste() {
+  const wrap = byId("prodPasteWrap");
+  if (wrap) wrap.classList.toggle("hidden", false);
+}
+
+function resetExtractUI() {
+  if (byId("prodUrl")) byId("prodUrl").value = "";
+  if (byId("prodPaste")) byId("prodPaste").value = "";
+  const wrap = byId("prodPasteWrap");
+  if (wrap) wrap.classList.toggle("hidden", true);
+  setExtractStatus("");
+}
+
+// Asks the background to read the product URL (or pasted text) and pre-fills the
+// editor for review. Never auto-saves: the existing Save button is the commit.
+async function autofillProduct() {
+  if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) return;
+
+  const url = byId("prodUrl") ? byId("prodUrl").value.trim() : "";
+  const text = byId("prodPaste") ? byId("prodPaste").value.trim() : "";
+
+  if (!url && !text) {
+    revealPaste();
+    setExtractStatus("Enter your product URL, or paste details below.", "dirty");
+    return;
+  }
+
+  const hasContent = ["prodName", "prodDesc", "prodMention"]
+    .some((id) => byId(id) && byId(id).value.trim());
+  if (hasContent && typeof window !== "undefined" && typeof window.confirm === "function") {
+    if (!window.confirm("Replace the name, description, and when-to-mention with details from this page?")) return;
+  }
+
+  const button = byId("prodAutofill");
+  if (button) button.disabled = true;
+  setExtractStatus("Reading the page…");
+
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "pennai.extract", url, text });
+    if (!response?.ok) {
+      if (response?.code === "thin_source" || response?.code === "fetch_failed") revealPaste();
+      throw new Error(response?.error || "Could not read that page.");
+    }
+
+    const product = response.result?.product || {};
+    if (byId("prodName")) byId("prodName").value = product.name || "";
+    if (byId("prodDesc")) byId("prodDesc").value = product.description || "";
+    if (byId("prodMention")) byId("prodMention").value = product.mention || "";
+
+    setExtractStatus(
+      response.result?.lowConfidence
+        ? "Filled, but the page was thin. Double-check each field before saving."
+        : "Filled from the page. Review the fields, then save the product."
+    );
+  } catch (error) {
+    setExtractStatus(error.message, "dirty");
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 // --- Export / import ------------------------------------------------------------
@@ -634,6 +705,7 @@ wire("productAdd", "click", () => openEditor(null));
 wire("prodSave", "click", saveProduct);
 wire("prodCancel", "click", closeEditor);
 wire("prodMedia", "change", addEditorImages);
+wire("prodAutofill", "click", autofillProduct);
 
 // --- Account (hosted API) -----------------------------------------------------
 

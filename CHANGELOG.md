@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.2.0 - 2026-06-14
+
+Faster product setup: let penn AI fill in a product's details from its landing page.
+
+### Added
+
+- **Auto-fill a product from its URL.** The product editor in Settings now has an Auto-fill field: paste your product's URL and penn AI reads the page (title, social/meta description, JSON-LD structured data, and visible copy) and drafts the name, description, and when-to-mention rule for you to review and save. Nothing is committed automatically; the existing Save button is still the commit. A paste-text fallback covers pre-launch products and pages it can't read, and the panel says so instead of failing silently.
+- Hosted endpoint `POST /v1/extract`: free, counted against the daily generation allowance, always on the fast model regardless of plan. Page fetching is SSRF-hardened (https only, private/loopback/link-local address blocking, per-hop redirect re-validation, a request timeout, and a response size cap). Works offline in mock mode.
+
+## 1.1.0 - 2026-06-13
+
+Production hardening: fair billing on failures, smarter product promotion in replies, and clearer in-panel recovery paths.
+
+### Fixed
+
+- **Failed generations no longer cost a daily call.** The server now reserves a call up front (keeping the daily cap atomic under concurrency) and refunds it whenever the OpenAI request fails, the response can't be parsed, or the safety filter leaves too few options. Users are only charged for drafts they actually receive.
+
+### Changed
+
+- **Replies promote products more intelligently.** All of a user's saved products are now surfaced to the model on every reply (ordered by likely relevance) instead of being hidden whenever they shared no literal keywords with the thread — the model judges semantic fit far better than word overlap. The reply prompt now actively looks for genuine openings (a problem the product solves, a request for a tool, a matching pain point) and works the product into exactly one option as a builder would, while keeping the other options clean. No more needing to type "promote my product."
+- The in-panel error for a free user who hits the daily limit (`free_limit_reached`) or tries to compose/promote (`upgrade_required`) now shows an **Upgrade to Pro** button; an expired session shows a **Sign in** button.
+- Insert now tells you to focus the X composer instead of doing nothing when none is active.
+
 ## 1.0.0 - 2026-06-10
 
 Production release: hosted generation, accounts, and subscriptions. The extension no longer needs (or accepts) an OpenAI API key.

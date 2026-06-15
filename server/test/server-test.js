@@ -5,6 +5,7 @@ import {
   stripJsonFence,
   parseReplyResult,
   parseRefineResult,
+  parseExtractResult,
   sanitizeReplyText,
   enforceReplyPolicy,
   violatesReplyPolicy
@@ -12,12 +13,15 @@ import {
 import {
   SYSTEM_PROMPT,
   POST_SYSTEM_PROMPT,
+  EXTRACT_SYSTEM_PROMPT,
   formatUserContext,
   selectRelevantProducts,
   buildReplyUserText,
-  buildPostInput
+  buildPostInput,
+  buildExtractInput
 } from "../src/prompts.js";
 import { filterImages } from "../src/openai.js";
+import { buildSourceFromHtml, isPrivateIp } from "../src/fetchPage.js";
 import { PLANS } from "../src/quota.js";
 
 assert.equal(stripJsonFence("```json\n{\"ok\":true}\n```"), '{"ok":true}');
@@ -47,13 +51,36 @@ const profile = {
 };
 
 assert.match(formatUserContext(profile), /Never sound like these examples/);
+
+const twoProducts = "Spec tool\n- Requirements and verification workflows.\n\nRecipe app\n- Meal planning.";
+// Default (hard gate): only the lexically overlapping product is surfaced.
 assert.match(
-  selectRelevantProducts(
-    "Spec tool\n- Requirements and verification workflows.\n\nRecipe app\n- Meal planning.",
-    "AI agents need requirements and verification before coding."
-  ),
+  selectRelevantProducts(twoProducts, "AI agents need requirements and verification before coding."),
   /Spec tool/
 );
+// alwaysList (the reply path): every product is surfaced even with zero keyword
+// overlap, so the model can judge semantic fit and promote when it genuinely
+// applies. This is the fix for "I have to say promote my product".
+const listedNoOverlap = selectRelevantProducts(twoProducts, "what are people using to plan dinners", { alwaysList: true });
+assert.match(listedNoOverlap, /Spec tool/);
+assert.match(listedNoOverlap, /Recipe app/);
+assert.doesNotMatch(listedNoOverlap, /appears directly relevant/);
+// alwaysList ranks the topically-closest product first.
+const ranked = selectRelevantProducts(twoProducts, "meal planning recipe ideas", { alwaysList: true });
+assert.ok(ranked.indexOf("Recipe app") < ranked.indexOf("Spec tool"));
+// With no saved products there is nothing to surface.
+assert.match(selectRelevantProducts("", "anything", { alwaysList: true }), /No saved products/);
+
+// The reply prompt surfaces the product even when the thread shares no keywords,
+// and tells the model to actively take a genuine opening (capped at one option).
+const replyWithProduct = buildReplyUserText({
+  note: "",
+  threadText: "how do you all keep agent output from going off the rails",
+  profile: { ...profile, products: "Spec tool\n- Requirements and verification workflows." },
+  hasImages: false
+});
+assert.match(replyWithProduct, /Spec tool/);
+assert.match(SYSTEM_PROMPT, /EXACTLY ONE/);
 
 const replyText = buildReplyUserText({
   note: "be a bit sarcastic",
@@ -106,6 +133,49 @@ assert.deepEqual(
   ]),
   ["https://pbs.twimg.com/media/abc?format=jpg&name=large", "data:image/jpeg;base64,aGk="]
 );
+
+// --- Product extraction ----------------------------------------------------------
+
+const product = parseExtractResult(JSON.stringify({
+  name: "Penn",
+  description: "Reply copilot for X.",
+  mention: "threads about growing on X"
+}));
+assert.equal(product.name, "Penn");
+assert.equal(product.mention, "threads about growing on X");
+assert.throws(() => parseExtractResult(JSON.stringify({ name: "" })), /Could not determine/);
+// Missing optional fields default to empty strings, not undefined.
+assert.equal(parseExtractResult(JSON.stringify({ name: "X" })).description, "");
+
+assert.match(EXTRACT_SYSTEM_PROMPT, /Never invent/);
+assert.match(buildExtractInput({ source: "ACME ships invoices" }), /ACME ships invoices/);
+
+// HTML signal extraction prefers owner-authored meta/JSON-LD over body text, so
+// it works even when the visible body is sparse (SPA landing pages).
+const rich = buildSourceFromHtml(
+  '<html><head><title>Acme</title>' +
+  '<meta property="og:description" content="Acme ships invoices fast.">' +
+  '<script type="application/ld+json">{"@type":"Product","name":"Acme","description":"Invoicing for freelancers."}</script>' +
+  '</head><body><nav>Home Pricing</nav><p>Acme is invoicing software for freelancers who hate admin.</p></body></html>'
+);
+assert.match(rich.source, /Acme/);
+assert.match(rich.source, /Invoicing for freelancers/);
+assert.equal(rich.thin, false);
+
+// A JS-only shell with no meta and no body copy is reported as thin.
+const thin = buildSourceFromHtml('<html><head><title>App</title></head><body><div id="root"></div></body></html>');
+assert.equal(thin.thin, true);
+
+// SSRF guard: loopback, private, link-local, and IPv6 local ranges are blocked;
+// public addresses pass.
+assert.equal(isPrivateIp("127.0.0.1"), true);
+assert.equal(isPrivateIp("10.1.2.3"), true);
+assert.equal(isPrivateIp("172.16.5.5"), true);
+assert.equal(isPrivateIp("192.168.0.5"), true);
+assert.equal(isPrivateIp("169.254.1.1"), true);
+assert.equal(isPrivateIp("::1"), true);
+assert.equal(isPrivateIp("::ffff:127.0.0.1"), true);
+assert.equal(isPrivateIp("8.8.8.8"), false);
 
 // Plan shape sanity.
 assert.equal(PLANS.free.compose, false);

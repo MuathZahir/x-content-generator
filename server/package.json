@@ -11,7 +11,7 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "migrate": "npx @better-auth/cli@latest migrate -y --config src/auth.js",
-    "check": "node --check src/index.js && node --check src/auth.js && node --check src/db.js && node --check src/openai.js && node --check src/prompts.js && node --check src/policy.js && node --check src/quota.js && node --check src/pages.js && node test/server-test.js"
+    "check": "node --check src/index.js && node --check src/auth.js && node --check src/db.js && node --check src/openai.js && node --check src/prompts.js && node --check src/policy.js && node --check src/quota.js && node --check src/pages.js && node --check src/fetchPage.js && node test/server-test.js"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",

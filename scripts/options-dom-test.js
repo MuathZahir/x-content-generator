@@ -141,6 +141,11 @@ document.add("prodMedia", "input");
 document.add("prodMediaPreview", "div");
 document.add("prodSave", "button");
 document.add("prodCancel", "button");
+document.add("prodUrl", "input");
+document.add("prodAutofill", "button");
+document.add("prodExtractStatus", "p");
+document.add("prodPasteWrap", "div").className = "hidden";
+document.add("prodPaste", "textarea");
 
 let stored = {};
 let generateCalls = [];
@@ -168,6 +173,15 @@ global.chrome = {
             user: { email: "maya@example.com" },
             limits: { dailyCalls: 5 },
             usedToday: 2
+          }
+        };
+      }
+      if (message.type === "pennai.extract") {
+        return {
+          ok: true,
+          result: {
+            product: { name: "Penn", description: "Reply copilot for X.", mention: "threads about growing on X" },
+            lowConfidence: false
           }
         };
       }
@@ -307,6 +321,20 @@ setImmediate(async () => {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(productItems.children.length, 2);
   assert.ok(!stored.productList.some((product) => product.name === "LaunchKit"));
+
+  // Auto-fill: a URL + Auto-fill click asks the background to extract and
+  // pre-fills the editor (without saving).
+  document.getElementById("productAdd").click();
+  document.getElementById("prodUrl").value = "https://heypenn.com";
+  document.getElementById("prodAutofill").click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(document.getElementById("prodName").value, "Penn");
+  assert.match(document.getElementById("prodDesc").value, /Reply copilot/);
+  assert.match(document.getElementById("prodMention").value, /growing on X/);
+  assert.match(document.getElementById("prodExtractStatus").textContent, /Review the fields/);
+  // Pre-fill does not commit: the product list is unchanged until Save.
+  assert.equal(productItems.children.length, 2);
+  document.getElementById("prodCancel").click();
 
   console.log("options dom test ok");
 });

@@ -180,17 +180,33 @@ function getTrends(limit = MAX_TRENDS) {
 function insertReply(composer, text) {
   if (!composer) return;
   composer.focus();
-  const range = document.createRange();
-  range.selectNodeContents(composer);
+
+  // Select all existing content so the paste replaces it (rather than appending).
   const selection = window.getSelection();
   if (!selection) {
     throw new Error("Could not select the composer.");
   }
-
+  const range = document.createRange();
+  range.selectNodeContents(composer);
   selection.removeAllRanges();
   selection.addRange(range);
-  document.execCommand("insertText", false, text);
-  composer.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
+
+  // Insert via a synthetic paste event rather than execCommand("insertText").
+  // X's composer is a Draft.js contenteditable: execCommand writes straight to
+  // the DOM, but Draft.js also inserts its own model-managed copy in response,
+  // leaving two copies where only one is tracked by its EditorState (delete the
+  // tracked one and the placeholder reappears behind the orphaned DOM copy).
+  // Routing the text through the editor's own paste pipeline keeps model + DOM
+  // in sync, and a synthetic (untrusted) ClipboardEvent triggers no browser
+  // default paste — so the text lands exactly once.
+  const dataTransfer = new DataTransfer();
+  dataTransfer.setData("text/plain", text);
+  const pasteEvent = new ClipboardEvent("paste", {
+    bubbles: true,
+    cancelable: true,
+    clipboardData: dataTransfer,
+  });
+  composer.dispatchEvent(pasteEvent);
 }
 
 async function copyReply(text) {
@@ -221,7 +237,11 @@ async function copyReply(text) {
 async function sendToBackground(payload, fallbackError) {
   const response = await chrome.runtime.sendMessage(payload);
   if (!response?.ok) {
-    throw new Error(response?.error || fallbackError);
+    // Carry the stable error code (e.g. free_limit_reached, upgrade_required,
+    // unauthorized) so the panel can offer the right next step, not just text.
+    const error = new Error(response?.error || fallbackError);
+    error.code = response?.code || "";
+    throw error;
   }
   return response.result;
 }
@@ -254,6 +274,37 @@ function showMessage(output, text, className = "pennai-error") {
   message.className = className;
   message.textContent = text;
   output.appendChild(message);
+}
+
+function openExtensionPage(page) {
+  chrome.runtime.sendMessage({ type: "pennai.open", page });
+}
+
+// Renders an error plus the one action that resolves it, so a free user out of
+// generations or on the wrong plan gets an Upgrade button (not a dead red box),
+// and a lapsed session gets a Sign in button.
+function showGenerationError(output, error) {
+  const code = error?.code || "";
+  if (code === "free_limit_reached" || code === "upgrade_required") {
+    showMessage(output, error.message);
+    addCtaButton(output, "Upgrade to Pro", () => openExtensionPage("upgrade"));
+    return;
+  }
+  if (code === "unauthorized") {
+    showMessage(output, error.message);
+    addCtaButton(output, "Sign in", () => chrome.runtime.sendMessage({ type: "pennai.signin" }));
+    return;
+  }
+  showMessage(output, error.message);
+}
+
+function addCtaButton(output, label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "pennai-cta";
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  output.appendChild(button);
 }
 
 function describeContext(context) {
@@ -397,7 +448,13 @@ function renderOption(output, option, refineContext) {
   const insertButton = document.createElement("button");
   insertButton.type = "button";
   insertButton.textContent = "Insert";
-  insertButton.addEventListener("click", () => insertReply(state.activeComposer, option.text));
+  insertButton.addEventListener("click", () => {
+    if (!state.activeComposer) {
+      showMessage(output, "Click into the X composer first, then Insert.");
+      return;
+    }
+    insertReply(state.activeComposer, option.text);
+  });
 
   const copyButton = document.createElement("button");
   copyButton.type = "button";
@@ -461,7 +518,7 @@ async function requestSuggestions({ context }) {
       renderOption(output, option, refineContext);
     }
   } catch (error) {
-    showMessage(output, error.message);
+    showGenerationError(output, error);
   } finally {
     suggest.disabled = false;
     suggest.classList.toggle("pennai-loading", false);
@@ -506,7 +563,7 @@ async function composeDrafts() {
       renderOption(output, option, refineContext);
     }
   } catch (error) {
-    showMessage(output, error.message);
+    showGenerationError(output, error);
   } finally {
     write.disabled = false;
     write.classList.toggle("pennai-loading", false);
@@ -797,7 +854,13 @@ function ensurePanel() {
     }
   });
   back.addEventListener("click", exitIterate);
-  insertDraft.addEventListener("click", () => insertReply(state.activeComposer, draftText.value));
+  insertDraft.addEventListener("click", () => {
+    if (!state.activeComposer) {
+      state.els.iterateError.textContent = "Click into the X composer first, then Insert.";
+      return;
+    }
+    insertReply(state.activeComposer, draftText.value);
+  });
   copyDraft.addEventListener("click", async () => {
     try {
       await copyReply(draftText.value);

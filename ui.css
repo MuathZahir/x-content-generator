@@ -583,6 +583,24 @@ button:disabled { cursor: wait; opacity: 0.65; }
   background: var(--input);
 }
 
+.product-autofill {
+  padding-bottom: 16px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.autofill-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.autofill-row input { flex: 1; }
+.autofill-row .secondary { white-space: nowrap; }
+
+#prodPasteWrap { margin-top: 10px; }
+
+#prodExtractStatus.dirty { color: var(--danger); }
+
 .product-editor-actions {
   display: flex;
   justify-content: flex-end;

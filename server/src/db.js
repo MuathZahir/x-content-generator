@@ -171,3 +171,14 @@ export async function getUsage(userId) {
   );
   return result.rows[0]?.calls || 0;
 }
+
+// Give back a call that was reserved by bumpUsage but never produced output
+// (generation failed). Clamped at zero so a day-boundary race can never push a
+// fresh counter negative.
+export async function refundUsage(userId) {
+  await pool.query(
+    `UPDATE usage_daily SET calls = GREATEST(calls - 1, 0)
+     WHERE user_id = $1 AND day = CURRENT_DATE`,
+    [userId]
+  );
+}

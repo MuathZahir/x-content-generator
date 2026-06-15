@@ -57,12 +57,14 @@ const backgroundSource = fs.readFileSync("background.js", "utf8");
 assert.doesNotMatch(backgroundSource, /api\.openai\.com/, "client must never call OpenAI directly");
 assert.doesNotMatch(backgroundSource, /apiKey/, "client must never handle a provider key");
 assert.match(backgroundSource, /Bearer \$\{token\}/, "hosted API uses the account token");
+assert.match(backgroundSource, /pennai\.extract/, "product extraction handler is wired");
 
 const optionsSource = fs.readFileSync("options.js", "utf8");
 assert.doesNotMatch(optionsSource, /apiKey/);
 assert.match(optionsSource, /refreshAccount/);
 assert.match(optionsSource, /syncMockModeNote/);
 assert.match(optionsSource, /resetDefaults/);
+assert.match(optionsSource, /autofillProduct/, "product auto-fill is wired");
 
 const popupSource = fs.readFileSync("popup.js", "utf8");
 assert.match(popupSource, /pennai\.signin/);
@@ -87,6 +89,8 @@ assert.ok(fs.existsSync("server/src/auth.js"));
 assert.ok(fs.existsSync("server/test/server-test.js"));
 const serverIndex = fs.readFileSync("server/src/index.js", "utf8");
 assert.match(serverIndex, /OPENAI|openai/, "provider calls live server-side");
+assert.match(serverIndex, /\/v1\/extract/, "product extraction endpoint exists");
+assert.ok(fs.existsSync("server/src/fetchPage.js"), "SSRF-guarded page fetcher exists");
 assert.match(fs.readFileSync("server/src/openai.js", "utf8"), /process\.env\.OPENAI_API_KEY/);
 
 // --- Docs ------------------------------------------------------------------------

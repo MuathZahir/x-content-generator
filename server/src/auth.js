@@ -68,8 +68,22 @@ const plugins = [];
 const polarPlugin = await buildPolarPlugin();
 if (polarPlugin) plugins.push(polarPlugin);
 
+// Sign-in is always initiated from a hosted page (heypenn.com/connect), but the
+// same service is also reachable at its Railway-generated URL. Better Auth
+// rejects any request whose Origin isn't trusted ("invalid origin"); by default
+// it trusts only baseURL, so a baseURL/page-origin mismatch breaks sign-in.
+// Trust both public domains so the flow works regardless of which one served
+// the page. Extra origins can be appended via TRUSTED_ORIGINS (comma-separated).
+const trustedOrigins = [
+  process.env.BETTER_AUTH_URL,
+  "https://heypenn.com",
+  "https://api-production-98f2.up.railway.app",
+  ...(process.env.TRUSTED_ORIGINS?.split(",").map((o) => o.trim()).filter(Boolean) || [])
+].filter(Boolean);
+
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL,
+  trustedOrigins,
   secret: process.env.BETTER_AUTH_SECRET,
   database: new Pool({ connectionString: process.env.DATABASE_URL, max: 5 }),
   socialProviders: process.env.GOOGLE_CLIENT_ID

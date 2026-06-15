@@ -1,4 +1,4 @@
-import { getBilling, getUsage, bumpUsage } from "./db.js";
+import { getBilling, getUsage, bumpUsage, refundUsage } from "./db.js";
 
 // Value ladder: replying is free forever (capped daily, fast model). Pro
 // unlocks the growth surface: original posts, product promotion, web-grounded
@@ -49,8 +49,11 @@ export async function getEntitlements(userId) {
 }
 
 // Resolves the request into {model, webSearch} the user is entitled to, and
-// consumes one call. Throws QuotaError with a stable code the extension maps
-// to UI (upgrade prompt vs. plain error).
+// RESERVES one call by bumping usage up front (atomic, so concurrent requests
+// can never exceed the daily cap). The caller MUST release the reservation with
+// refundCall() if generation then fails, so a user is never charged for a draft
+// they did not receive. Throws QuotaError with a stable code the extension maps
+// to UI (upgrade prompt vs. plain error) before any call is reserved.
 export async function authorizeCall(userId, { kind, requestedModel, webSearch }) {
   const billing = await getBilling(userId);
   const plan = PLANS[billing.plan] || PLANS.free;
@@ -80,4 +83,11 @@ export async function authorizeCall(userId, { kind, requestedModel, webSearch })
     webSearch: Boolean(webSearch) && plan.webSearch,
     plan: billing.plan
   };
+}
+
+// Releases a reservation made by authorizeCall when the generation that
+// followed it failed. Best-effort: a failed refund must never mask the original
+// generation error, so callers swallow its rejection.
+export async function refundCall(userId) {
+  await refundUsage(userId);
 }

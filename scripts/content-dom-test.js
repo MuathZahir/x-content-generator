@@ -74,6 +74,12 @@ class Element {
   }
 
   dispatchEvent(event) {
+    // Model X's Draft.js composer: a synthetic paste applies the clipboard text
+    // to the editor (this is how insertReply now writes drafts, instead of the
+    // double-inserting execCommand path).
+    if (event.type === "paste" && event.clipboardData) {
+      this.textContent = event.clipboardData.getData("text/plain");
+    }
     for (const listener of this.eventListeners[event.type] || []) {
       listener.call(this, event);
     }
@@ -229,6 +235,25 @@ global.window = {
 global.InputEvent = class InputEvent {
   constructor(type) {
     this.type = type;
+  }
+};
+global.DataTransfer = class DataTransfer {
+  constructor() {
+    this._data = {};
+  }
+  setData(type, value) {
+    this._data[type] = String(value);
+  }
+  getData(type) {
+    return this._data[type] || "";
+  }
+};
+global.ClipboardEvent = class ClipboardEvent {
+  constructor(type, init = {}) {
+    this.type = type;
+    this.bubbles = Boolean(init.bubbles);
+    this.cancelable = Boolean(init.cancelable);
+    this.clipboardData = init.clipboardData || null;
   }
 };
 global.MutationObserver = class MutationObserver {

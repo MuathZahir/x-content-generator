@@ -70,6 +70,27 @@ All three accept the user's profile per request; the server never stores it:
 
 `/v1/compose` additionally takes `idea`, `feed`, `trends`, `feedGrounding`, `webSearch`, and an optional `product` object (name, description, mention, media). `/v1/refine` takes `kind`, `currentText`, `instruction`, `baseContext`, `history`.
 
+## Product extraction
+
+```http
+POST /v1/extract    (draft a product profile from a URL or pasted text)
+```
+
+```json
+{ "url": "https://yourproduct.com", "text": "optional pasted landing-page text / README" }
+```
+
+Provide `url`, `text`, or both (text wins). When given a `url`, the server fetches the page itself (https only; resolved IP must be public; redirects capped and re-validated per hop; 6 s timeout; 512 KB cap) and distills its title, og:/twitter:/meta description, JSON-LD, and visible body into model input. Response:
+
+```json
+{
+  "product": { "name": "...", "description": "...", "mention": "..." },
+  "lowConfidence": false
+}
+```
+
+Free for all plans, counted against the daily allowance, and always run on the fast model. Distinct error codes: `thin_source` (page had too little to read — prompt the user to paste text) and `fetch_failed` (page unreachable / not HTML); a blocked or malformed URL returns `invalid_request`.
+
 Generate response:
 
 ```json

@@ -40,6 +40,22 @@ export function parseRefineResult(raw) {
   return { text: parsed.text };
 }
 
+export function parseExtractResult(raw) {
+  const parsed = JSON.parse(stripJsonFence(raw));
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Model returned an invalid response.");
+  }
+  const name = String(parsed.name || "").trim();
+  if (!name) {
+    throw new Error("Could not determine the product from that source.");
+  }
+  return {
+    name,
+    description: String(parsed.description || "").trim(),
+    mention: String(parsed.mention || "").trim()
+  };
+}
+
 // Hard guard against the em/en dash tell, plus a few mechanical AI artifacts,
 // regardless of what the model returns.
 export function sanitizeReplyText(text) {
@@ -94,10 +110,10 @@ const AI_TELL_PATTERNS = [
   { name: "forced wrap-up", pattern: /\b(?:in conclusion|bottom line|the takeaway)\b/i }
 ];
 
-export function violatesReplyPolicy(text, { forbidden } = {}) {
+export function violatesReplyPolicy(text, { forbidden, allowLinks = false } = {}) {
   const normalized = text.toLowerCase();
   if (/#\w+/.test(text)) return "hashtags are disabled";
-  if (/https?:\/\/|www\./i.test(text)) return "links are disabled";
+  if (!allowLinks && /https?:\/\/|www\./i.test(text)) return "links are disabled";
 
   const tell = AI_TELL_PATTERNS.find(({ pattern }) => pattern.test(text));
   if (tell) return `AI tell: ${tell.name}`;
@@ -106,12 +122,21 @@ export function violatesReplyPolicy(text, { forbidden } = {}) {
   return term ? `forbidden phrase: ${term}` : "";
 }
 
-export function enforceReplyPolicy(result, { forbidden } = {}) {
+export function enforceReplyPolicy(result, { forbidden, allowLinks = false } = {}) {
+  const rejected = [];
   const options = result.options
     .map((option) => ({ ...option, text: sanitizeReplyText(option.text) }))
-    .filter((option) => !violatesReplyPolicy(option.text, { forbidden }));
+    .filter((option) => {
+      const violation = violatesReplyPolicy(option.text, { forbidden, allowLinks });
+      if (violation) rejected.push({ violation, text: option.text.slice(0, 90) });
+      return !violation;
+    });
 
   if (options.length < 3) {
+    // Diagnostic: surface exactly which rule rejected each option so policy
+    // failures are not opaque. allowLinks shows whether the compose path's
+    // link allowance is active in this deploy.
+    console.error(`policy reject: kept=${options.length}/${result.options.length} allowLinks=${allowLinks} ${JSON.stringify(rejected)}`);
     throw new Error("Generated replies violated too many safety rules. Try again.");
   }
 

@@ -39,6 +39,7 @@ const {
   generateReplies,
   generatePost,
   refineDraft,
+  extractProduct,
   getAccount
 } = require("../background.js");
 
@@ -164,6 +165,31 @@ async function main() {
   assert.equal(account.signedIn, true);
   assert.equal(account.plan, "free");
   assert.equal(account.usedToday, 2);
+
+  // 8a. Product extraction in mock mode never touches the network.
+  storedSettings = { mockMode: true };
+  fetchCalls = [];
+  const mockProduct = await extractProduct({ url: "https://heypenn.com", text: "" });
+  assert.equal(fetchCalls.length, 0);
+  assert.ok(mockProduct.product.name.length > 0);
+  assert.equal(typeof mockProduct.lowConfidence, "boolean");
+
+  // 8b. Signed in: one POST to /v1/extract with the bearer token and the URL.
+  storedSettings = { mockMode: false, apiToken: "penn_extract" };
+  fetchCalls = [];
+  fetchResponder = (url) => {
+    assert.equal(url, `${API_BASE}/v1/extract`);
+    return jsonResponse({
+      product: { name: "penn AI", description: "Reply copilot for X.", mention: "threads about X growth" },
+      lowConfidence: false
+    });
+  };
+  const extracted = await extractProduct({ url: "https://heypenn.com", text: "" });
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0].options.headers.Authorization, "Bearer penn_extract");
+  const extractBody = JSON.parse(fetchCalls[0].options.body);
+  assert.equal(extractBody.url, "https://heypenn.com");
+  assert.equal(extracted.product.name, "penn AI");
 
   // 8. The profile payload carries every saved field and nothing secret.
   const payload = buildProfilePayload({
