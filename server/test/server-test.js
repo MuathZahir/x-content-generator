@@ -80,7 +80,11 @@ const replyWithProduct = buildReplyUserText({
   hasImages: false
 });
 assert.match(replyWithProduct, /Spec tool/);
-assert.match(SYSTEM_PROMPT, /EXACTLY ONE/);
+// The product cap scales with fit (one for a loose opening, more when squarely
+// on-topic) instead of a hard "exactly one" rule, but always keeps some options
+// clean and never leans on the "this is why I built X" opener.
+assert.match(SYSTEM_PROMPT, /Scale how many of the options mention the product/);
+assert.match(SYSTEM_PROMPT, /this is why I built/i);
 
 const replyText = buildReplyUserText({
   note: "be a bit sarcastic",

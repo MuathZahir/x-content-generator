@@ -4,7 +4,7 @@
 
 ### Changed
 
-- **Replies promote products more eagerly, and can share the link.** The reply prompt now leans into mentioning a product whenever a thread is even loosely related, instead of holding out for a near-perfect fit (it still works the product into exactly one option as a builder would, and keeps the others clean). Products now have a **Link** field in the editor; when Penn AI works a product into a reply it drops that link at the end of that one option so people can find it. The reply safety filter, which strips links as a spam tell, now lets a link through when its host matches one of your own products, and blocks every other URL as before. Auto-fill pre-fills the link from the product page you read.
+- **Replies promote products more eagerly, and can share the link.** The reply prompt now leans into mentioning a product whenever a thread is even loosely related, instead of holding out for a near-perfect fit. The number of options that work the product in now scales with how strong the fit is (one for a loose opening, two or three when the post is squarely on-topic) instead of a hard one-option cap, while always leaving some options clean. The mention also varies its angle and no longer leans on the "this is why I built X" opener, which had become a tell. Products now have a **Link** field in the editor; when Penn AI works a product into a reply it drops that link at the end of one of those options so people can find it. The reply safety filter, which strips links as a spam tell, now lets a link through when its host matches one of your own products, and blocks every other URL as before. Auto-fill pre-fills the link from the product page you read.
 
 ## 1.2.0 - 2026-06-14
 
