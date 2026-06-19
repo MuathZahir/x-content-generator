@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Inspect Polar account via the CLI's stored token and (optionally) provision
-# the penn AI server pieces: webhook endpoint + organization access token.
+# the Penn AI server pieces: webhook endpoint + organization access token.
 # Run inside WSL: bash polar-setup.sh [inspect|provision]
 set -euo pipefail
 

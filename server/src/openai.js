@@ -15,6 +15,7 @@ import {
   parseRefineResult,
   parseExtractResult,
   enforceReplyPolicy,
+  extractHosts,
   sanitizeReplyText,
   violatesReplyPolicy
 } from "./policy.js";
@@ -117,7 +118,12 @@ export async function generateReplies({ note, threadText, images, profile, model
   return withQualityRetry(async () => {
     const data = await openaiFetch("/chat/completions", body);
     const result = parseReplyResult(data.choices?.[0]?.message?.content || "");
-    return enforceReplyPolicy(result, { forbidden: profile.forbidden });
+    // Replies may carry a link, but only to the user's own products (the hosts
+    // named in their saved product blocks). Any other URL is still a spam tell.
+    return enforceReplyPolicy(result, {
+      forbidden: profile.forbidden,
+      allowedHosts: extractHosts(profile.products)
+    });
   });
 }
 
@@ -275,8 +281,13 @@ export async function refineDraft({ kind, currentText, instruction, baseContext,
   const { text } = parseRefineResult(data.choices?.[0]?.message?.content || "");
 
   const cleaned = sanitizeReplyText(text);
-  // Refining a post keeps the same link allowance as composing one.
-  const violation = violatesReplyPolicy(cleaned, { forbidden: profile.forbidden, allowLinks: kind === "post" });
+  // Refining a post keeps the full link allowance; refining a reply keeps the
+  // narrower one (the user's own product links only), matching generateReplies.
+  const violation = violatesReplyPolicy(cleaned, {
+    forbidden: profile.forbidden,
+    allowLinks: kind === "post",
+    allowedHosts: extractHosts(profile.products)
+  });
   if (violation) {
     const error = new Error(`Refined draft broke a rule (${violation}). Try a different instruction.`);
     error.code = "safety_filter_failed";

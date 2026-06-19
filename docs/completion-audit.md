@@ -1,6 +1,6 @@
 # Completion Audit
 
-Objective: build penn AI into a feature-complete, usable, useful product following an agile lifecycle, starting from the project idea in `conversation.md`.
+Objective: build Penn AI into a feature-complete, usable, useful product following an agile lifecycle, starting from the project idea in `conversation.md`.
 
 ## Success Criteria
 

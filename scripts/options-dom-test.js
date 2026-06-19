@@ -136,6 +136,7 @@ document.add("productAdd", "button");
 document.add("productEditor", "div").className = "product-editor hidden";
 document.add("prodName", "input");
 document.add("prodDesc", "textarea");
+document.add("prodLink", "input");
 document.add("prodMention", "input");
 document.add("prodMedia", "input");
 document.add("prodMediaPreview", "div");

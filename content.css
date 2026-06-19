@@ -1,4 +1,4 @@
-/* penn AI panel — refined X-native dark.
+/* Penn AI panel — refined X-native dark.
    Defaults to a polished dark palette; flips to a clean light theme when the
    OS / X is in light mode. */
 
@@ -332,6 +332,49 @@
 .pennai-dismiss:hover {
   color: var(--cr-text) !important;
   background: var(--cr-bg-elev) !important;
+}
+
+/* Reopen bubble — a small launcher shown after the panel is dismissed. */
+.pennai-bubble {
+  --cr-bg: #15202b;
+  --cr-border-strong: #3a4a5a;
+  --cr-accent: #1d9bf0;
+  --cr-accent-soft: rgba(29, 155, 240, 0.14);
+  --cr-shadow: 0 20px 48px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.02);
+
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--cr-border-strong);
+  border-radius: 999px;
+  background: var(--cr-bg);
+  box-shadow: var(--cr-shadow);
+  cursor: grab;
+  touch-action: none;
+  animation: pennai-rise 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.pennai-bubble:active {
+  cursor: grabbing;
+}
+
+.pennai-bubble:hover {
+  border-color: var(--cr-accent);
+}
+
+.pennai-bubble .pennai-dot {
+  width: 12px;
+  height: 12px;
+  box-shadow: 0 0 0 5px var(--cr-accent-soft);
+  pointer-events: none;
 }
 
 /* Context preview */

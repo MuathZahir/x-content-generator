@@ -18,11 +18,11 @@ Checks performed:
 - Confirmed the composer text became: `The useful part is making the task concrete before the agent starts changing files.`
 - Reloaded the fixture, generated suggestions, clicked the first **Copy** control, and confirmed the button entered the `Copied` state.
 - Updated the fixture to include two composers.
-- Confirmed two penn AI panels render, one per composer.
+- Confirmed two Penn AI panels render, one per composer.
 - Called `scan()` repeatedly and confirmed the panel count stays at two.
 - Focused the second composer, triggered the content-script shortcut message, and confirmed suggestions rendered under the second composer.
 - Forced clipboard failure in the fixture, clicked **Copy**, and confirmed the visible message: `Copy failed. Use Insert or select the text manually.`
-- Switched the fixture to missing-key mode, clicked **Suggest replies**, and confirmed the visible message: `Add your OpenAI API key in the penn AI extension settings.`
+- Switched the fixture to missing-key mode, clicked **Suggest replies**, and confirmed the visible message: `Add your OpenAI API key in the Penn AI extension settings.`
 - Served the fixture from `http://127.0.0.1:8765/tests/mock-x-page.html`.
 - Generated suggestions and clicked **Copy** through browser automation.
 - Confirmed the button entered the `Copied` state on a localhost origin.
@@ -187,14 +187,14 @@ Checks performed:
 
 - Loaded the project folder as a browser extension using `agent-browser --extension`.
 - Opened `chrome://extensions`.
-- Confirmed **penn AI** appears under **All Extensions**.
+- Confirmed **Penn AI** appears under **All Extensions**.
 - Confirmed extension is enabled.
 - Opened the extension details page.
 - Confirmed expected host permissions are listed for `https://api.openai.com/*`, `https://twitter.com/*`, and `https://x.com/*`.
 - Confirmed source path points to `~\Projects\_Active_\x-saas-marketer`.
 - Removed the unused `activeTab` permission.
 - Reloaded the project as an unpacked extension in a fresh browser automation session.
-- Confirmed **penn AI** still appears enabled under `chrome://extensions`.
+- Confirmed **Penn AI** still appears enabled under `chrome://extensions`.
 
 Still not covered:
 

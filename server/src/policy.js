@@ -110,10 +110,41 @@ const AI_TELL_PATTERNS = [
   { name: "forced wrap-up", pattern: /\b(?:in conclusion|bottom line|the takeaway)\b/i }
 ];
 
-export function violatesReplyPolicy(text, { forbidden, allowLinks = false } = {}) {
+// Bare host of a URL, lowercased and without a leading "www.". Returns "" for
+// anything that does not parse as a URL.
+function linkHost(rawUrl) {
+  try {
+    const withScheme = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+    return new URL(withScheme).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+const LINK_RE = /https?:\/\/[^\s)]+|\bwww\.[^\s)]+/gi;
+
+// The set of hosts the reply path is allowed to link to: the user's own
+// products. Replies may carry a product's link when it is the genuine answer,
+// but never an arbitrary or hallucinated URL.
+export function extractHosts(text) {
+  const hosts = [];
+  for (const match of String(text || "").match(LINK_RE) || []) {
+    const host = linkHost(match);
+    if (host && !hosts.includes(host)) hosts.push(host);
+  }
+  return hosts;
+}
+
+export function violatesReplyPolicy(text, { forbidden, allowLinks = false, allowedHosts = [] } = {}) {
   const normalized = text.toLowerCase();
   if (/#\w+/.test(text)) return "hashtags are disabled";
-  if (!allowLinks && /https?:\/\/|www\./i.test(text)) return "links are disabled";
+  if (!allowLinks) {
+    const offending = (String(text).match(LINK_RE) || []).some((link) => {
+      const host = linkHost(link);
+      return !host || !allowedHosts.includes(host);
+    });
+    if (offending) return "links are disabled";
+  }
 
   const tell = AI_TELL_PATTERNS.find(({ pattern }) => pattern.test(text));
   if (tell) return `AI tell: ${tell.name}`;
@@ -122,12 +153,12 @@ export function violatesReplyPolicy(text, { forbidden, allowLinks = false } = {}
   return term ? `forbidden phrase: ${term}` : "";
 }
 
-export function enforceReplyPolicy(result, { forbidden, allowLinks = false } = {}) {
+export function enforceReplyPolicy(result, { forbidden, allowLinks = false, allowedHosts = [] } = {}) {
   const rejected = [];
   const options = result.options
     .map((option) => ({ ...option, text: sanitizeReplyText(option.text) }))
     .filter((option) => {
-      const violation = violatesReplyPolicy(option.text, { forbidden, allowLinks });
+      const violation = violatesReplyPolicy(option.text, { forbidden, allowLinks, allowedHosts });
       if (violation) rejected.push({ violation, text: option.text.slice(0, 90) });
       return !violation;
     });

@@ -1,5 +1,5 @@
-// penn AI background service worker.
-// All model calls go through the hosted penn AI API, which holds the
+// Penn AI background service worker.
+// All model calls go through the hosted Penn AI API, which holds the
 // provider key server-side. The extension never stores or sends an OpenAI
 // key. The user's profile lives only in chrome.storage.local and is sent
 // per-request, never persisted by the server.
@@ -26,12 +26,14 @@ const AUTH_DEFAULTS = {
 
 // --- Products ----------------------------------------------------------------
 
-// productList entries: { id, name, description, mention, media: [{ type, dataUrl, name }] }
+// productList entries: { id, name, description, link, mention, media: [{ type, dataUrl, name }] }
 function formatProductBlock(product) {
   if (!product) return "";
   const parts = [String(product.name || "").trim()];
   const description = String(product.description || "").trim();
   if (description) parts.push(description);
+  const link = String(product.link || "").trim();
+  if (link) parts.push(`Link: ${link}`);
   const mention = String(product.mention || "").trim();
   if (mention) parts.push(`Mention only when: ${mention}`);
   return parts.filter(Boolean).join("\n");
@@ -119,10 +121,44 @@ const AI_TELL_PATTERNS = [
   { name: "forced wrap-up", pattern: /\b(?:in conclusion|bottom line|the takeaway)\b/i }
 ];
 
-function violatesReplyPolicy(text, settings, allowLinks = false) {
+// Bare host of a URL, lowercased and without a leading "www.". Returns "" for
+// anything that does not parse as a URL.
+function linkHost(rawUrl) {
+  try {
+    const withScheme = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+    return new URL(withScheme).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+const LINK_RE = /https?:\/\/[^\s)]+|\bwww\.[^\s)]+/gi;
+
+function extractHosts(text) {
+  const hosts = [];
+  for (const match of String(text || "").match(LINK_RE) || []) {
+    const host = linkHost(match);
+    if (host && !hosts.includes(host)) hosts.push(host);
+  }
+  return hosts;
+}
+
+// Hosts the reply path may link to: the user's own products. Mirrors the
+// server, which derives the same set from the products text it receives.
+function getProductHosts(settings) {
+  return extractHosts(getProductsText(settings));
+}
+
+function violatesReplyPolicy(text, settings, { allowLinks = false, allowedHosts = [] } = {}) {
   const normalized = text.toLowerCase();
   if (/#\w+/.test(text)) return "hashtags are disabled";
-  if (!allowLinks && /https?:\/\/|www\./i.test(text)) return "links are disabled";
+  if (!allowLinks) {
+    const offending = (String(text).match(LINK_RE) || []).some((link) => {
+      const host = linkHost(link);
+      return !host || !allowedHosts.includes(host);
+    });
+    if (offending) return "links are disabled";
+  }
 
   const tell = AI_TELL_PATTERNS.find(({ pattern }) => pattern.test(text));
   if (tell) return `AI tell: ${tell.name}`;
@@ -131,10 +167,10 @@ function violatesReplyPolicy(text, settings, allowLinks = false) {
   return term ? `forbidden phrase: ${term}` : "";
 }
 
-function enforceReplyPolicy(result, { settings, allowLinks = false }) {
+function enforceReplyPolicy(result, { settings, allowLinks = false, allowedHosts = [] }) {
   const options = result.options
     .map((option) => ({ ...option, text: sanitizeReplyText(option.text) }))
-    .filter((option) => !violatesReplyPolicy(option.text, settings, allowLinks));
+    .filter((option) => !violatesReplyPolicy(option.text, settings, { allowLinks, allowedHosts }));
 
   if (options.length < 3) {
     throw new Error("Generated replies violated too many safety rules. Try again.");
@@ -241,7 +277,7 @@ class ApiError extends Error {
   }
 }
 
-const SIGN_IN_MESSAGE = "Sign in to penn AI: click the penn AI icon in your toolbar.";
+const SIGN_IN_MESSAGE = "Sign in to Penn AI: click the Penn AI icon in your toolbar.";
 
 async function apiFetch(path, { method = "POST", body, token } = {}) {
   const headers = { "Content-Type": "application/json" };
@@ -255,7 +291,7 @@ async function apiFetch(path, { method = "POST", body, token } = {}) {
       body: body === undefined ? undefined : JSON.stringify(body)
     });
   } catch {
-    throw new ApiError("network", "Could not reach penn AI. Check your connection and try again.", 0);
+    throw new ApiError("network", "Could not reach Penn AI. Check your connection and try again.", 0);
   }
 
   let data = null;
@@ -404,8 +440,10 @@ async function openPage({ page }) {
 
 async function generateReplies({ note, threadText, images }) {
   const settings = await chrome.storage.local.get(SETTINGS_DEFAULTS);
+  // Replies may carry the user's own product link, never an arbitrary one.
+  const allowedHosts = getProductHosts(settings);
   if (settings.mockMode) {
-    return enforceReplyPolicy(generateMockReplies({ note, threadText }), { settings });
+    return enforceReplyPolicy(generateMockReplies({ note, threadText }), { settings, allowedHosts });
   }
 
   const result = await authedApi("/v1/generate", {
@@ -416,7 +454,7 @@ async function generateReplies({ note, threadText, images }) {
     profile: buildProfilePayload(settings)
   });
 
-  return enforceReplyPolicy(result, { settings });
+  return enforceReplyPolicy(result, { settings, allowedHosts });
 }
 
 async function generatePost({ idea, feed, trends, productId }) {
@@ -442,6 +480,7 @@ async function generatePost({ idea, feed, trends, productId }) {
       ? {
           name: product.name,
           description: product.description,
+          link: product.link,
           mention: product.mention,
           media: Array.isArray(product.media) ? product.media.slice(0, 4) : []
         }
@@ -475,7 +514,10 @@ async function refineDraft({ kind, currentText, instruction, baseContext, images
   }
 
   const cleaned = sanitizeReplyText(text);
-  const violation = violatesReplyPolicy(cleaned, settings, kind === "post");
+  const violation = violatesReplyPolicy(cleaned, settings, {
+    allowLinks: kind === "post",
+    allowedHosts: getProductHosts(settings)
+  });
   if (violation) {
     throw new Error(`Refined draft broke a rule (${violation}). Try a different instruction.`);
   }

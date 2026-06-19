@@ -337,6 +337,7 @@ app.post("/v1/compose", (c) =>
       ? {
           name: clip(body.product.name, 200),
           description: clip(body.product.description, 2000),
+          link: clip(body.product.link, 500),
           mention: clip(body.product.mention, 500),
           media: Array.isArray(body.product.media) ? body.product.media.slice(0, 4) : []
         }

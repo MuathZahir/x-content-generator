@@ -1,4 +1,4 @@
-# Generates the penn AI brand icons (speech bubble + X-blue dot on deep
+# Generates the Penn AI brand icons (speech bubble + X-blue dot on deep
 # slate) at 16/32/48/128 px into icons/. Run: pwsh scripts/make-icons.ps1
 Add-Type -AssemblyName System.Drawing
 

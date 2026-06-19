@@ -6,12 +6,12 @@ The local MVP lets a user provide their own OpenAI API key because it keeps the 
 
 ## Decision
 
-For any hosted/commercial release, penn AI should proxy model calls through a minimal backend. The Chrome extension should authenticate to penn AI, not store a long-lived OpenAI API key.
+For any hosted/commercial release, Penn AI should proxy model calls through a minimal backend. The Chrome extension should authenticate to Penn AI, not store a long-lived OpenAI API key.
 
 ## Recommended architecture
 
-1. Extension authenticates the user with penn AI.
-2. Extension sends the selected mode, visible context preview text, and saved profile fields to the penn AI backend after the user clicks **Suggest replies**.
+1. Extension authenticates the user with Penn AI.
+2. Extension sends the selected mode, visible context preview text, and saved profile fields to the Penn AI backend after the user clicks **Suggest replies**.
 3. Backend enforces rate limits, abuse limits, request size limits, and billing/plan limits.
 4. Backend calls OpenAI with the server-held API key.
 5. Backend validates the JSON shape, applies the same anti-cringe filters, and returns options to the extension.

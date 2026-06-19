@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>penn AI Settings</title>
+    <title>Penn AI Settings</title>
     <link rel="stylesheet" href="ui.css">
   </head>
   <body class="settings-body">
@@ -11,7 +11,7 @@
       <aside class="rail">
         <div class="brand">
           <span class="brand-dot"></span>
-          <span class="brand-name">penn AI</span>
+          <span class="brand-name">Penn AI</span>
         </div>
 
         <nav class="rail-nav" aria-label="Sections">
@@ -41,7 +41,7 @@
         <section class="intro">
           <p class="kicker">Your reply copilot for X</p>
           <h1>Sound like <em>you</em>,<br>not like a model.</h1>
-          <p class="muted">Your profile below stays in this browser's local extension storage; our server never keeps a copy. When you click <strong>Suggest replies</strong>, penn AI sends the visible post (and any post images) plus this profile to your account's generation API — and nothing else is sent, logged, or stored.</p>
+          <p class="muted">Your profile below stays in this browser's local extension storage; our server never keeps a copy. When you click <strong>Suggest replies</strong>, Penn AI sends the visible post (and any post images) plus this profile to your account's generation API — and nothing else is sent, logged, or stored.</p>
         </section>
 
         <section class="card" id="sec-connection">
@@ -105,7 +105,7 @@
               <span class="switch-track"><span class="switch-thumb"></span></span>
               <span class="switch-label">Use mock replies for local QA</span>
             </label>
-            <p id="mockModeNote" class="field-note hidden">Mock mode uses local sample replies and does not call OpenAI or the penn AI API. No sign-in needed.</p>
+            <p id="mockModeNote" class="field-note hidden">Mock mode uses local sample replies and does not call OpenAI or the Penn AI API. No sign-in needed.</p>
           </div>
         </section>
 
@@ -133,7 +133,7 @@
           </div>
 
           <div id="productItems" class="product-items"></div>
-          <p id="productEmpty" class="product-empty">No products yet. Create one so penn AI can mention and promote your work.</p>
+          <p id="productEmpty" class="product-empty">No products yet. Create one so Penn AI can mention and promote your work.</p>
 
           <div class="product-toolbar">
             <button id="productAdd" type="button" class="secondary">+ Create product</button>
@@ -150,7 +150,7 @@
               <div id="prodPasteWrap" class="hidden">
                 <textarea id="prodPaste" rows="4" placeholder="Or paste your landing page text, README, or a short description here."></textarea>
               </div>
-              <p class="field-note">penn AI reads the page and drafts the fields below for you to review. Pages it can't read fall back to the paste box. Uses one of your daily generations.</p>
+              <p class="field-note">Penn AI reads the page and drafts the fields below for you to review. Pages it can't read fall back to the paste box. Uses one of your daily generations.</p>
             </div>
             <div class="field">
               <label for="prodName">Name</label>
@@ -159,6 +159,11 @@
             <div class="field">
               <label for="prodDesc">Description</label>
               <textarea id="prodDesc" rows="4" placeholder="What it does, who it's for, what makes it different. The model writes from this."></textarea>
+            </div>
+            <div class="field">
+              <label for="prodLink">Link</label>
+              <input id="prodLink" type="url" placeholder="https://yourproduct.com">
+              <p class="field-note">Added to the end of a reply when Penn AI works your product in, so people can find it. Leave blank to mention it without a link.</p>
             </div>
             <div class="field">
               <label for="prodMention">When to mention it</label>

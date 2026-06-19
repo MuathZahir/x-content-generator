@@ -1,6 +1,6 @@
-# penn AI
+# Penn AI
 
-penn AI is a Chrome extension that drafts X replies and posts in your voice. It reads the visible post/thread only when you click **Suggest replies**, combines it with your saved context profile, and returns options you manually edit and post. Generation runs through the hosted penn AI API (`server/`, deployed on Railway), which holds the model key server-side; the extension never stores a provider key.
+Penn AI is a Chrome extension that drafts X replies and posts in your voice. It reads the visible post/thread only when you click **Suggest replies**, combines it with your saved context profile, and returns options you manually edit and post. Generation runs through the hosted Penn AI API (`server/`, deployed on Railway), which holds the model key server-side; the extension never stores a provider key.
 
 Current version: `1.0.0`. Release notes are in [CHANGELOG.md](CHANGELOG.md).
 
@@ -22,8 +22,8 @@ It is intentionally human-in-the-loop. It does not auto-post, auto-like, scrape 
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Click **Load unpacked** and select this project folder.
-4. Click the penn AI toolbar icon and **Continue with Google** (or enable mock mode in settings for offline QA).
-5. Open X, start a reply, and click **Suggest replies** in the penn AI panel.
+4. Click the Penn AI toolbar icon and **Continue with Google** (or enable mock mode in settings for offline QA).
+5. Open X, start a reply, and click **Suggest replies** in the Penn AI panel.
 
 ## Validate
 

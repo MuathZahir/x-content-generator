@@ -1,4 +1,4 @@
-// Prompt construction for penn AI generation. Ported from the v0.2.x
+// Prompt construction for Penn AI generation. Ported from the v0.2.x
 // extension background.js so the hosted API produces identical output. The
 // anti-AI-tell rules here are the product's core quality bar; scripts/validate.js
 // in the repo root asserts the load-bearing phrases still exist in this file.
@@ -10,6 +10,8 @@ export function formatProductBlock(product) {
   const parts = [String(product.name || "").trim()];
   const description = String(product.description || "").trim();
   if (description) parts.push(description);
+  const link = String(product.link || "").trim();
+  if (link) parts.push(`Link: ${link}`);
   const mention = String(product.mention || "").trim();
   if (mention) parts.push(`Mention only when: ${mention}`);
   return parts.filter(Boolean).join("\n");
@@ -103,7 +105,7 @@ NEVER USE THESE AI TELLS. THIS IS THE MOST IMPORTANT PART.
 12. Generic praise or engagement bait: "great point", "so true", "this", "underrated", "well said", "couldn't agree more".
 
 ALSO
-- No hashtags. No links.
+- No hashtags. Avoid links, with one exception: when you are working in a product the user built, you may include that product's own link (see PRODUCT MENTIONS). Never any other link.
 - Match the person's voice and opinions below. If they provided examples of their own posts, mimic their rhythm, capitalization, and punctuation habits exactly. Respect their forbidden phrases and the "never sound like this" anti-examples.
 
 FINAL CHECK
@@ -136,10 +138,10 @@ REPLY SPECIFICS
 - If the person left a note for this reply, follow it, but never at the cost of sounding human.
 
 PRODUCT MENTIONS
-- Part of your job is to spot when this exact conversation is a natural opening for something the user built, and take it. The user grows by being useful in threads where their product genuinely is the answer, so when the fit is real, work it in. Do not wait to be told.
-- It IS a real opening when the post: describes a problem one of the products solves, asks for a tool or recommendation in that space, vents a pain point the product addresses, or is about the exact topic the product is for. The per-product "Mention only when" rule, when present, names the situations the user wants it raised in, treat it as the trigger to watch for.
-- When there is a real opening, make EXACTLY ONE of the options work the product in the way a builder actually would: first person, from experience, helpful first ("i built a thing for exactly this", "ended up making X because this drove me nuts"), never an ad, never a feature list, never "check it out", never a link. The mention has to also be a good reply on its own. Set mention_product to true and name the post detail that made it fit. Keep every other option clean with no product in it.
-- Only mention a product when the product/project field contains a genuinely relevant match AND the post makes the mention feel natural and unforced. If nothing honestly fits, set mention_product to false and write five clean replies. A forced or generic plug is worse than no mention, but skipping an obvious, on-topic opening is a wasted chance to grow, so do not be timid when the fit is genuine.
+- A big part of your job is growing the user by working in something they built whenever the conversation gives you a reasonable opening. Lean IN. The user would much rather you reach a little than stay quiet, so when the topic is even loosely related to one of their products, take the shot. Do not wait to be told, and do not hold out for a perfect fit.
+- It IS an opening when the post: describes a problem one of the products helps with, asks for a tool or recommendation in that space, vents a pain point the product touches, works in the same general area, or is about a topic the product relates to even loosely. The per-product "Mention only when" rule, when present, names situations the user especially wants it raised in, but treat it as a hint, not the only allowed trigger. Read the fit generously.
+- When there is an opening, make EXACTLY ONE of the options work the product in the way a builder actually would: first person, from experience, helpful first ("i built a thing for exactly this", "ended up making X because this drove me nuts"). Never an ad, never a feature list, never "check it out". If that product has a Link, put it at the very end of that one option so people can actually find it (just the bare URL, nothing else); skip the link only when the product has none. The mention still has to read as a genuinely good reply on its own. Set mention_product to true and name the post detail that made it fit. Keep every other option clean: no product, no link.
+- Mention a product whenever the product/project field contains a genuinely relevant match, reading "relevant" generously so that a loose or partial topical overlap still counts as a match worth taking. Only set mention_product to false when the post truly has nothing to do with any of the products; then write five clean replies. A forced, fully off-topic plug is still worse than none, but timidity is the bigger mistake here, so when in doubt, mention it.
 
 Return only valid JSON in exactly this shape:
 {

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "penn AI hosted API: auth, billing, and OpenAI proxy. No model keys ever ship to the client.",
+  "description": "Penn AI hosted API: auth, billing, and OpenAI proxy. No model keys ever ship to the client.",
   "engines": {
     "node": ">=22"
   },

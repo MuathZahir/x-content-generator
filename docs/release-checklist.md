@@ -1,6 +1,6 @@
 # Release Checklist
 
-Use this checklist before calling penn AI ready for real users.
+Use this checklist before calling Penn AI ready for real users.
 
 The live testing steps for unchecked items are documented in `docs/live-qa-playbook.md`.
 

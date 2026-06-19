@@ -1,16 +1,16 @@
 # Privacy and Security
 
-penn AI is a human-in-the-loop assistant, not an automation bot. The user-facing privacy policy is hosted at https://heypenn.com/privacy; this document is the engineering view.
+Penn AI is a human-in-the-loop assistant, not an automation bot. The user-facing privacy policy is hosted at https://heypenn.com/privacy; this document is the engineering view.
 
 ## What is stored locally (chrome.storage.local)
 
 - Context profile, products/projects (including downscaled product photos), writing examples and tone, forbidden phrases, bad examples
 - Model preference, mock mode, feed grounding, and web search flags
-- The penn AI device token (`apiToken`) minted by the pairing flow
+- The Penn AI device token (`apiToken`) minted by the pairing flow
 
 There is no OpenAI API key anywhere in the extension. Profile exports include only profile fields, never the device token.
 
-## What is sent to the penn AI API, and when
+## What is sent to the Penn AI API, and when
 
 Only after the user clicks **Suggest replies** (or composes/refines on request), the extension sends to `https://heypenn.com`:
 

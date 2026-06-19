@@ -66,7 +66,7 @@ async function main() {
   fetchCalls = [];
   await assert.rejects(
     () => generateReplies({ note: "", threadText: "Any thread." }),
-    /Sign in to penn AI/
+    /Sign in to Penn AI/
   );
   assert.equal(fetchCalls.length, 0);
 
@@ -120,7 +120,7 @@ async function main() {
   fetchResponder = () => jsonResponse({ error: { code: "unauthorized", message: "Sign in." } }, 401);
   await assert.rejects(
     () => generateReplies({ note: "", threadText: "Any thread." }),
-    /Sign in to penn AI/
+    /Sign in to Penn AI/
   );
   assert.ok(storageWrites.some((write) => write.apiToken === ""));
 
@@ -180,7 +180,7 @@ async function main() {
   fetchResponder = (url) => {
     assert.equal(url, `${API_BASE}/v1/extract`);
     return jsonResponse({
-      product: { name: "penn AI", description: "Reply copilot for X.", mention: "threads about X growth" },
+      product: { name: "Penn AI", description: "Reply copilot for X.", mention: "threads about X growth" },
       lowConfidence: false
     });
   };
@@ -189,7 +189,7 @@ async function main() {
   assert.equal(fetchCalls[0].options.headers.Authorization, "Bearer penn_extract");
   const extractBody = JSON.parse(fetchCalls[0].options.body);
   assert.equal(extractBody.url, "https://heypenn.com");
-  assert.equal(extracted.product.name, "penn AI");
+  assert.equal(extracted.product.name, "Penn AI");
 
   // 8. The profile payload carries every saved field and nothing secret.
   const payload = buildProfilePayload({

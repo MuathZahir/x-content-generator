@@ -1,13 +1,13 @@
 # Architecture
 
-penn AI is a Manifest V3 Chrome extension with no backend in the local MVP.
+Penn AI is a Manifest V3 Chrome extension with no backend in the local MVP.
 
 ## Runtime Pieces
 
 | File | Responsibility |
 | --- | --- |
 | `manifest.json` | Extension metadata, host matches, permissions, command registration, background worker registration |
-| `content.js` | Runs on X/Twitter pages, detects composers, renders the penn AI panel, reads visible context, copies/inserts selected replies |
+| `content.js` | Runs on X/Twitter pages, detects composers, renders the Penn AI panel, reads visible context, copies/inserts selected replies |
 | `content.css` | Styles the injected X composer panel |
 | `background.js` | Handles generation messages, loads settings, builds prompts, calls OpenAI or mock generation, validates and filters replies |
 | `options.html` / `options.js` | Settings UI for API key, model, mock mode, profile, products, voice, forbidden phrases, bad examples, import/export, reset defaults |

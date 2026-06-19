@@ -81,6 +81,7 @@ function sanitizeProduct(raw) {
     id: typeof raw.id === "string" && raw.id ? raw.id : newProductId(),
     name,
     description: String(raw.description || "").trim(),
+    link: String(raw.link || "").trim(),
     mention: String(raw.mention || "").trim(),
     media: (Array.isArray(raw.media) ? raw.media : [])
       .filter((item) => item && item.type === "image" && typeof item.dataUrl === "string")
@@ -133,6 +134,7 @@ function migrateProducts(stored) {
 function formatProductBlock(product) {
   const parts = [product.name];
   if (product.description) parts.push(product.description);
+  if (product.link) parts.push(`Link: ${product.link}`);
   if (product.mention) parts.push(`Mention only when: ${product.mention}`);
   return parts.filter(Boolean).join("\n");
 }
@@ -278,7 +280,7 @@ function strengthHintFor(values, score) {
     return "Add opinions you actually hold to Identity.";
   }
   if (productList.length === 0) {
-    return "Create a product so penn AI can promote your work.";
+    return "Create a product so Penn AI can promote your work.";
   }
   if (String(values.badExamples || "").trim().length === 0) {
     return "Paste a couple of cringe replies into Never sound like this.";
@@ -393,6 +395,7 @@ function openEditor(product) {
   editorMedia = product ? product.media.map((m) => ({ ...m })) : [];
   byId("prodName").value = product ? product.name : "";
   byId("prodDesc").value = product ? product.description : "";
+  if (byId("prodLink")) byId("prodLink").value = product ? (product.link || "") : "";
   byId("prodMention").value = product ? product.mention : "";
   renderMediaPreview();
   resetExtractUI();
@@ -411,6 +414,7 @@ async function saveProduct() {
     id: editingId,
     name: byId("prodName").value,
     description: byId("prodDesc").value,
+    link: byId("prodLink") ? byId("prodLink").value : "",
     mention: byId("prodMention").value,
     media: editorMedia
   });
@@ -529,6 +533,9 @@ async function autofillProduct() {
     if (byId("prodName")) byId("prodName").value = product.name || "";
     if (byId("prodDesc")) byId("prodDesc").value = product.description || "";
     if (byId("prodMention")) byId("prodMention").value = product.mention || "";
+    // The page we just read from is the natural link to share; pre-fill it (but
+    // never clobber a link the user already typed).
+    if (url && byId("prodLink") && !byId("prodLink").value.trim()) byId("prodLink").value = url;
 
     setExtractStatus(
       response.result?.lowConfidence

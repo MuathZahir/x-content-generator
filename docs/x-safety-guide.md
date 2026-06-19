@@ -1,6 +1,6 @@
 # X Safety Guide
 
-penn AI is designed to keep the user in control. It suggests replies, but it does not post, like, repost, follow, DM, scrape feeds, or run campaigns.
+Penn AI is designed to keep the user in control. It suggests replies, but it does not post, like, repost, follow, DM, scrape feeds, or run campaigns.
 
 This does not guarantee account safety. X says users are responsible for actions taken by their accounts and that spammy or duplicative mentions/replies can lead to enforcement. Treat this guide as risk reduction, not immunity.
 
@@ -72,7 +72,7 @@ Pause usage if:
 
 ## Implementation Boundaries
 
-penn AI should continue to avoid:
+Penn AI should continue to avoid:
 
 - Auto-posting.
 - Bulk reply queues.

@@ -1,4 +1,4 @@
-// Live smoke test against the hosted penn AI API.
+// Live smoke test against the hosted Penn AI API.
 // Usage:
 //   $env:PENN_AI_TOKEN = "penn_..."   (copy from a signed-in extension:
 //     chrome.storage.local.get("apiToken") in the service-worker console)

@@ -24,3 +24,6 @@ desktop.ini
 # Logs
 *.log
 npm-debug.log*
+
+# /market skill state (contains private outreach drafts)
+.market/

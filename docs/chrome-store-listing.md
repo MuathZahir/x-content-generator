@@ -4,7 +4,7 @@ Everything below is ready to paste into the Chrome Web Store developer dashboard
 
 ## Name
 
-penn AI — X reply copilot in your voice
+Penn AI — X reply copilot in your voice
 
 ## Short description (132 chars max)
 
@@ -16,7 +16,7 @@ Social & Communication (alternative: Productivity / Workflow)
 
 ## Detailed description
 
-penn AI is a human-in-the-loop reply copilot for X.
+Penn AI is a human-in-the-loop reply copilot for X.
 
 It lives beside the X composer. When you click Suggest replies, it reads the post you are replying to, combines it with your saved profile (who you are, what you build, your actual posts, your forbidden phrases), and drafts 3-5 reply options that read like a sharp human typed them on a phone.
 
@@ -34,7 +34,7 @@ PRIVATE BY DESIGN
 Your profile stays in your browser's local extension storage; our server never keeps a copy. Generation requests are processed and discarded — request content is never logged or stored. Sign-in is Google; payments are handled by Polar. No ads, no trackers, no data sales.
 
 HARD SAFETY LINES
-penn AI never auto-posts, never likes, follows, DMs, or reposts, never scrapes, and never acts without your click. You always edit and post by hand.
+Penn AI never auto-posts, never likes, follows, DMs, or reposts, never scrapes, and never acts without your click. You always edit and post by hand.
 
 ## Permission justification
 
@@ -42,7 +42,7 @@ penn AI never auto-posts, never likes, follows, DMs, or reposts, never scrapes, 
 - `clipboardWrite`: powers the Copy button on generated drafts.
 - `tabs`: opens the sign-in/upgrade pages in a new tab and routes the Alt+Shift+R shortcut to the active X tab.
 - Host `https://x.com/*`, `https://twitter.com/*`: injects the reply panel beside the composer. Read-only; the extension never posts.
-- Host `https://heypenn.com/*`: the penn AI API. Called only when you explicitly request a generation or check your account. Holds the model API key server-side so no key ever ships in the extension.
+- Host `https://heypenn.com/*`: the Penn AI API. Called only when you explicitly request a generation or check your account. Holds the model API key server-side so no key ever ships in the extension.
 
 ## Privacy
 
@@ -58,7 +58,7 @@ penn AI never auto-posts, never likes, follows, DMs, or reposts, never scrapes, 
 
 - The extension is human-in-the-loop: every generation requires a click; the user manually copies/inserts/edits/posts.
 - It never submits X posts and does not automate likes, reposts, follows, DMs, or bulk replies, and does not use the X API.
-- To test WITHOUT an account: open the extension options, enable "Use mock replies for local QA", open any X post, click reply, and press Suggest replies in the penn AI panel. Mock mode is fully offline.
+- To test WITHOUT an account: open the extension options, enable "Use mock replies for local QA", open any X post, click reply, and press Suggest replies in the Penn AI panel. Mock mode is fully offline.
 - To test WITH an account: click the toolbar icon, Continue with Google, then generate on any X post (Free plan, no card required).
 
 ## Assets needed (only remaining manual items)

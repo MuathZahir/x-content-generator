@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "penn AI",
+  "name": "Penn AI | Market your product on X, in your voice",
   "description": "A human-in-the-loop X reply copilot that drafts replies and posts in your voice, using your context only when relevant.",
   "version": "1.2.0",
   "permissions": ["storage", "unlimitedStorage", "clipboardWrite", "tabs"],
@@ -15,7 +15,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "penn AI",
+    "default_title": "Penn AI",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

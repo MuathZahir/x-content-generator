@@ -75,7 +75,7 @@ assert.match(fs.readFileSync("options.html", "utf8"), /does not call OpenAI/);
 assert.match(fs.readFileSync("options.html", "utf8"), /Reset defaults/);
 assert.match(fs.readFileSync("popup.html", "utf8"), /Continue with Google/);
 assert.match(fs.readFileSync("popup.html", "utf8"), /X safety guide/);
-assert.match(fs.readFileSync("tests/mock-x-page.html", "utf8"), /Sign in to penn AI/);
+assert.match(fs.readFileSync("tests/mock-x-page.html", "utf8"), /Sign in to Penn AI/);
 
 // --- Server parity: the load-bearing prompt phrases live server-side now ---------
 

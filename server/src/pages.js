@@ -203,13 +203,13 @@ function layout({ title, body, wide = false, script = "" }) {
 <body>
 <main class="${wide ? "wide" : ""}">
   <div class="topbar">
-    <a class="brand" href="/"><span class="brand-dot"></span><span class="brand-name">penn AI</span></a>
+    <a class="brand" href="/"><span class="brand-dot"></span><span class="brand-name">Penn AI</span></a>
     <span class="mono">replies that sound like you</span>
   </div>
   ${body}
 </main>
 <footer><div class="inner">
-  <span>© ${new Date().getFullYear()} penn AI</span>
+  <span>© ${new Date().getFullYear()} Penn AI</span>
   <a href="/privacy">privacy</a>
   <a href="/terms">terms</a>
   <a href="mailto:muathzaher2004@gmail.com">support</a>
@@ -251,22 +251,19 @@ function setStatus(kind, text) {
 
 export function landingPage() {
   return layout({
-    title: "penn AI — an X reply copilot that sounds like you",
+    title: "Penn AI — an X reply copilot that sounds like you",
     wide: true,
     body: `
 <section class="hero">
   <div class="hero-copy">
     <span class="eyebrow fade-in"><span class="pip"></span>Chrome extension for X</span>
     <h1 class="fade-in d1">Sound like <em>you</em>, not like a model.</h1>
-    <p class="lede fade-in d2">penn AI lives beside the X composer. It reads the post you're replying to, knows your voice, your products, and your guardrails, then drafts replies a real person would actually type. You edit and post by hand — it never auto-posts.</p>
+    <p class="lede fade-in d2">Penn AI lives beside the X composer. It reads the post you're replying to, knows your voice, your products, and your guardrails, then drafts replies a real person would actually type. You edit and post by hand — it never auto-posts.</p>
     <div class="cta-row fade-in d3">
-      <a class="btn" href="https://chromewebstore.google.com/" rel="noopener">Add to Chrome — free</a>
+      <a class="btn" href="https://chromewebstore.google.com/detail/penn-ai/hjdnmjnpomgkddpmafjkpgfmookfmacp" rel="noopener">Add to Chrome — free</a>
       <a class="btn btn-ghost" href="/upgrade">See Pro</a>
     </div>
     <div class="proof fade-in d3">
-      <span class="avatars"><span></span><span></span><span></span><span></span></span>
-      <span>builders replying in their own voice</span>
-      <span class="sep"></span>
       <span>5 free drafts / day</span>
     </div>
   </div>
@@ -284,7 +281,7 @@ export function landingPage() {
       </div>
       <div class="panel">
         <div class="panel-head">
-          <span class="brand-dot"></span><span class="pname">penn AI</span>
+          <span class="brand-dot"></span><span class="pname">Penn AI</span>
           <span class="ctx">reading thread · your voice</span>
         </div>
         <div class="panel-body">
@@ -309,7 +306,7 @@ export function landingPage() {
   <div class="section-head">
     <p class="kicker">what it does</p>
     <h2>Context in, you out.</h2>
-    <p>It isn't a generic generator bolted onto a prompt box. penn AI reads the actual conversation and writes from who you actually are.</p>
+    <p>It isn't a generic generator bolted onto a prompt box. Penn AI reads the actual conversation and writes from who you actually are.</p>
   </div>
   <div class="feature-grid">
     <div class="feature">
@@ -379,7 +376,7 @@ export function landingPage() {
         <li>Anti-AI-slop filter on every draft</li>
         <li>Reads images in the post</li>
       </ul>
-      <p style="margin-top:18px"><a class="btn btn-ghost" href="https://chromewebstore.google.com/" rel="noopener">Add to Chrome</a></p>
+      <p style="margin-top:18px"><a class="btn btn-ghost" href="https://chromewebstore.google.com/detail/penn-ai/hjdnmjnpomgkddpmafjkpgfmookfmacp" rel="noopener">Add to Chrome</a></p>
     </div>
     <div class="tier pro">
       <h3>Pro</h3>
@@ -400,8 +397,8 @@ export function landingPage() {
   <div class="final">
     <p class="kicker" style="justify-content:center">ready when you are</p>
     <h2>Replies are the front door.<br>Walk through as <em>yourself</em>.</h2>
-    <p>Add penn AI, set your voice once, and start drafting replies that sound like you in seconds.</p>
-    <a class="btn" href="https://chromewebstore.google.com/" rel="noopener">Add to Chrome — it's free</a>
+    <p>Add Penn AI, set your voice once, and start drafting replies that sound like you in seconds.</p>
+    <a class="btn" href="https://chromewebstore.google.com/detail/penn-ai/hjdnmjnpomgkddpmafjkpgfmookfmacp" rel="noopener">Add to Chrome — it's free</a>
     <p class="mono" style="margin-top:22px">human-in-the-loop · no auto-posting · no scraping</p>
   </div>
 </section>`
@@ -411,7 +408,7 @@ export function landingPage() {
 export function connectPage() {
   const body = `
 <p class="kicker">connect your extension</p>
-<h1>Link this browser<br>to <em>penn AI</em>.</h1>
+<h1>Link this browser<br>to <em>Penn AI</em>.</h1>
 <div class="card">
   <p id="explain">Sign in, and the extension on this computer is connected automatically.</p>
   <p class="mono hidden" id="codeline">pairing code&nbsp;&nbsp;<span class="code-chip" id="code"></span></p>
@@ -484,7 +481,7 @@ async function approve() {
   });
 })();`;
 
-  return layout({ title: "Connect — penn AI", body, script });
+  return layout({ title: "Connect — Penn AI", body, script });
 }
 
 export function upgradePage() {
@@ -535,12 +532,12 @@ async function go(slug) {
 document.getElementById("monthly").addEventListener("click", () => go("pro"));
 document.getElementById("yearly").addEventListener("click", () => go("pro-yearly"));`;
 
-  return layout({ title: "Upgrade — penn AI Pro", body, script });
+  return layout({ title: "Upgrade — Penn AI Pro", body, script });
 }
 
 export function successPage() {
   return layout({
-    title: "Welcome to Pro — penn AI",
+    title: "Welcome to Pro — Penn AI",
     body: `
 <p class="kicker">payment confirmed</p>
 <h1>You're <em>Pro</em>.</h1>
@@ -555,14 +552,14 @@ export function successPage() {
 
 export function privacyPage() {
   return layout({
-    title: "Privacy — penn AI",
+    title: "Privacy — Penn AI",
     wide: true,
     body: `
 <p class="kicker">privacy policy · effective 2026-06-10</p>
 <h1>Privacy, in plain words.</h1>
 
 <h2>What the extension does</h2>
-<p>penn AI is a human-in-the-loop reply assistant for X (x.com). It only acts when you click <strong>Suggest replies</strong> (or press the shortcut). It never auto-posts, never likes, follows, or messages anyone, and never reads pages other than the X tab you are using.</p>
+<p>Penn AI is a human-in-the-loop reply assistant for X (x.com). It only acts when you click <strong>Suggest replies</strong> (or press the shortcut). It never auto-posts, never likes, follows, or messages anyone, and never reads pages other than the X tab you are using.</p>
 
 <h2>What stays on your device</h2>
 <p>Your profile (who you are, your products, your writing voice, forbidden phrases, anti-examples, product photos) is stored in Chrome's local extension storage on your computer. We do not keep a copy on our servers.</p>
@@ -589,13 +586,13 @@ export function privacyPage() {
 
 export function termsPage() {
   return layout({
-    title: "Terms — penn AI",
+    title: "Terms — Penn AI",
     wide: true,
     body: `
 <p class="kicker">terms of service · effective 2026-06-10</p>
 <h1>Terms, briefly.</h1>
 <h2>The service</h2>
-<p>penn AI drafts X replies and posts on your request. You review, edit, and post everything yourself. You are responsible for what you publish and for complying with X's rules. Don't use penn AI for spam, harassment, deception, or bulk-automation of any kind.</p>
+<p>Penn AI drafts X replies and posts on your request. You review, edit, and post everything yourself. You are responsible for what you publish and for complying with X's rules. Don't use Penn AI for spam, harassment, deception, or bulk-automation of any kind.</p>
 <h2>Plans</h2>
 <p>Free includes a daily generation allowance. Pro is a paid subscription billed by Polar (merchant of record); cancel anytime from the billing portal and Pro runs until the end of the paid period. Daily caps are anti-abuse fair-use limits, not promises of model availability.</p>
 <h2>No warranty</h2>

@@ -7,6 +7,8 @@ const MAX_TRENDS = 10;
 const state = {
   panel: null,
   els: null,
+  bubble: null,
+  dismissed: false,
   activeComposer: null,
   lastContext: null,
   view: "reply",
@@ -659,7 +661,7 @@ function ensurePanel() {
   const dot = document.createElement("span");
   dot.className = "pennai-dot";
   const brandName = document.createElement("span");
-  brandName.textContent = "penn AI";
+  brandName.textContent = "Penn AI";
   brand.append(dot, brandName);
 
   const dismiss = document.createElement("button");
@@ -874,19 +876,107 @@ function ensurePanel() {
   });
 
   dismiss.addEventListener("click", () => {
+    // Keep the panel closed until the user explicitly reopens it via the
+    // bubble. Without this flag the MutationObserver/focusin handlers would
+    // re-show the panel on the next DOM mutation.
+    state.dismissed = true;
     panel.classList.toggle("pennai-hidden", true);
+    showBubble();
   });
 
   return state.els;
 }
 
+// A small draggable launcher shown after the user closes the panel, so they
+// can reopen Penn AI without losing their place.
+function ensureBubble() {
+  if (state.bubble) return state.bubble;
+
+  const bubble = document.createElement("button");
+  bubble.type = "button";
+  bubble.className = "pennai-bubble pennai-hidden";
+  bubble.setAttribute("aria-label", "Open Penn AI");
+  bubble.title = "Open Penn AI";
+  const dot = document.createElement("span");
+  dot.className = "pennai-dot";
+  bubble.appendChild(dot);
+
+  // Drag-to-move. A click that doesn't move beyond a small threshold counts as
+  // a tap and reopens the panel.
+  let dragging = false;
+  let moved = false;
+  let startX = 0;
+  let startY = 0;
+  let originLeft = 0;
+  let originTop = 0;
+
+  const onPointerMove = (event) => {
+    if (!dragging) return;
+    const dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) moved = true;
+    const left = Math.min(Math.max(originLeft + dx, 8), window.innerWidth - bubble.offsetWidth - 8);
+    const top = Math.min(Math.max(originTop + dy, 8), window.innerHeight - bubble.offsetHeight - 8);
+    bubble.style.left = `${left}px`;
+    bubble.style.top = `${top}px`;
+    bubble.style.right = "auto";
+    bubble.style.bottom = "auto";
+  };
+
+  const onPointerUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.removeEventListener("pointermove", onPointerMove);
+    document.removeEventListener("pointerup", onPointerUp);
+  };
+
+  bubble.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    moved = false;
+    startX = event.clientX;
+    startY = event.clientY;
+    const rect = bubble.getBoundingClientRect();
+    originLeft = rect.left;
+    originTop = rect.top;
+    document.addEventListener("pointermove", onPointerMove);
+    document.addEventListener("pointerup", onPointerUp);
+  });
+
+  bubble.addEventListener("click", () => {
+    if (moved) return; // it was a drag, not a tap
+    state.dismissed = false;
+    hideBubble();
+    showPanel();
+  });
+
+  document.body.appendChild(bubble);
+  state.bubble = bubble;
+  return bubble;
+}
+
+function showBubble() {
+  ensureBubble().classList.toggle("pennai-hidden", false);
+}
+
+function hideBubble() {
+  if (state.bubble) state.bubble.classList.toggle("pennai-hidden", true);
+}
+
 function showPanel() {
+  // Respect an explicit dismissal — surface the bubble instead so the user
+  // can reopen on their own terms.
+  if (state.dismissed) {
+    showBubble();
+    return;
+  }
   ensurePanel();
+  hideBubble();
   state.panel.classList.toggle("pennai-hidden", false);
 }
 
 function hidePanel() {
   if (state.panel) state.panel.classList.toggle("pennai-hidden", true);
+  hideBubble();
 }
 
 function scan() {
@@ -924,6 +1014,9 @@ chrome.runtime.onMessage.addListener((message) => {
   const composer = focused || getAllComposers().at(-1);
   if (!composer) return;
 
+  // An explicit shortcut press means "bring Penn AI back", overriding a prior
+  // dismissal.
+  state.dismissed = false;
   showPanel();
   setActiveComposer(composer);
 

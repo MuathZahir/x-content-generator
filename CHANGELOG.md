@@ -1,12 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Replies promote products more eagerly, and can share the link.** The reply prompt now leans into mentioning a product whenever a thread is even loosely related, instead of holding out for a near-perfect fit (it still works the product into exactly one option as a builder would, and keeps the others clean). Products now have a **Link** field in the editor; when Penn AI works a product into a reply it drops that link at the end of that one option so people can find it. The reply safety filter, which strips links as a spam tell, now lets a link through when its host matches one of your own products, and blocks every other URL as before. Auto-fill pre-fills the link from the product page you read.
+
 ## 1.2.0 - 2026-06-14
 
-Faster product setup: let penn AI fill in a product's details from its landing page.
+Faster product setup: let Penn AI fill in a product's details from its landing page.
 
 ### Added
 
-- **Auto-fill a product from its URL.** The product editor in Settings now has an Auto-fill field: paste your product's URL and penn AI reads the page (title, social/meta description, JSON-LD structured data, and visible copy) and drafts the name, description, and when-to-mention rule for you to review and save. Nothing is committed automatically; the existing Save button is still the commit. A paste-text fallback covers pre-launch products and pages it can't read, and the panel says so instead of failing silently.
+- **Auto-fill a product from its URL.** The product editor in Settings now has an Auto-fill field: paste your product's URL and Penn AI reads the page (title, social/meta description, JSON-LD structured data, and visible copy) and drafts the name, description, and when-to-mention rule for you to review and save. Nothing is committed automatically; the existing Save button is still the commit. A paste-text fallback covers pre-launch products and pages it can't read, and the panel says so instead of failing silently.
 - Hosted endpoint `POST /v1/extract`: free, counted against the daily generation allowance, always on the fast model regardless of plan. Page fetching is SSRF-hardened (https only, private/loopback/link-local address blocking, per-hop redirect re-validation, a request timeout, and a response size cap). Works offline in mock mode.
 
 ## 1.1.0 - 2026-06-13
@@ -39,8 +45,8 @@ Production release: hosted generation, accounts, and subscriptions. The extensio
 
 ### Changed
 
-- `background.js` now talks only to the penn AI API; prompts and policy enforcement moved server-side (mirrored in `server/src/prompts.js` and `server/src/policy.js`, with parity tests). The client keeps a defensive sanitize/filter pass and the offline mock mode.
-- `host_permissions` narrowed to the penn AI API origin; `api.openai.com` removed.
+- `background.js` now talks only to the Penn AI API; prompts and policy enforcement moved server-side (mirrored in `server/src/prompts.js` and `server/src/policy.js`, with parity tests). The client keeps a defensive sanitize/filter pass and the offline mock mode.
+- `host_permissions` narrowed to the Penn AI API origin; `api.openai.com` removed.
 - Options page Connection card replaced by the Account card; the OpenAI key field is gone for good.
 - Mock mode is now also the store-reviewer path: it works fully signed-out and offline.
 
@@ -74,7 +80,7 @@ Writing-quality, product marketing, and settings overhaul.
 
 ## 0.1.0 - 2026-05-03
 
-Initial local MVP for penn AI.
+Initial local MVP for Penn AI.
 
 ### Added
 

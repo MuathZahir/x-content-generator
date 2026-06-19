@@ -5,7 +5,7 @@ Use this playbook to close the remaining release gates that require an authentic
 ## Prerequisites
 
 - Chrome or Chromium.
-- penn AI loaded as an unpacked extension from this project folder.
+- Penn AI loaded as an unpacked extension from this project folder.
 - An authenticated X account available in the test browser.
 - Optional for live generation: `OPENAI_API_KEY`.
 
@@ -14,7 +14,7 @@ Use this playbook to close the remaining release gates that require an authentic
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Click **Load unpacked** and select this project folder.
-4. Confirm **penn AI** appears and is enabled.
+4. Confirm **Penn AI** appears and is enabled.
 5. Open extension details and confirm host permissions include:
    - `https://x.com/*`
    - `https://twitter.com/*`
@@ -47,7 +47,7 @@ Evidence:
 
 1. Open `https://x.com/home`.
 2. Open a reply composer from a visible feed post.
-3. Confirm the penn AI panel appears once.
+3. Confirm the Penn AI panel appears once.
 4. Expand **Context sent** and confirm it contains only nearby visible thread/post text.
 5. With mock mode enabled, click **Suggest replies**.
 6. Confirm 3 reply options appear.
@@ -79,7 +79,7 @@ Evidence:
 ## 5. X Modal/Drawer Composer
 
 1. Open any X flow that uses a modal or drawer composer.
-2. Confirm the penn AI panel appears once.
+2. Confirm the Penn AI panel appears once.
 3. Repeat the generation, gate, insert, copy, and no-post checks.
 
 Evidence:
@@ -103,7 +103,7 @@ Evidence:
 2. Clear the API key.
 3. Open an X reply composer.
 4. Click **Suggest replies**.
-5. Confirm the visible error says: `Add your OpenAI API key in the penn AI extension settings.`
+5. Confirm the visible error says: `Add your OpenAI API key in the Penn AI extension settings.`
 
 Evidence:
 

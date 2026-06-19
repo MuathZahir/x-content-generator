@@ -1,6 +1,6 @@
 # Profile Guide
 
-Good penn AI output depends on specific profile context. Keep entries short, concrete, and easy for the model to apply.
+Good Penn AI output depends on specific profile context. Keep entries short, concrete, and easy for the model to apply.
 
 ## Context profile
 
@@ -22,7 +22,9 @@ Opinions:
 
 ## Products and projects
 
-Use separate blocks. Each block should include when to mention it and when not to.
+Use separate blocks. Each block should include when to mention it and when not to. Add a **Link** to each product you want shared: when Penn AI works a product into a reply, it drops that link at the end of the one option that mentions it, so people can find it. Leave the link blank to have the product mentioned without a URL.
+
+Penn AI leans toward mentioning a product whenever a thread is even loosely related to it, so keep the "mention when" lines honest. Tighten them if mentions start feeling forced; widen them if you want the product surfaced more often.
 
 Example:
 

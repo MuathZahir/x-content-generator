@@ -1,4 +1,4 @@
-# penn AI API server
+# Penn AI API server
 
 Hono + Better Auth + Polar + Postgres. Deployed on Railway (project `penn-ai`, service `api`), canonical domain `https://heypenn.com` (Railway also keeps the internal `https://api-production-98f2.up.railway.app` URL alive).
 

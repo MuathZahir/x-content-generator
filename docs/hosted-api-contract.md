@@ -6,7 +6,7 @@ Base URL: `https://heypenn.com`
 
 ## Authentication
 
-Every `/v1` endpoint (except device pairing) requires a penn AI device token, never an OpenAI key:
+Every `/v1` endpoint (except device pairing) requires a Penn AI device token, never an OpenAI key:
 
 ```http
 Authorization: Bearer penn_<token>
@@ -60,7 +60,7 @@ All three accept the user's profile per request; the server never stores it:
   "model": "gpt-5.4",
   "profile": {
     "context": "Who I am, opinions, stable background.",
-    "products": "Product/project blocks with mention rules.",
+    "products": "Product/project blocks with optional `Link:` lines and mention rules.",
     "voice": "Tone and writing examples.",
     "forbidden": "Forbidden phrases or behaviors.",
     "badExamples": "Examples to avoid imitating."
@@ -68,7 +68,7 @@ All three accept the user's profile per request; the server never stores it:
 }
 ```
 
-`/v1/compose` additionally takes `idea`, `feed`, `trends`, `feedGrounding`, `webSearch`, and an optional `product` object (name, description, mention, media). `/v1/refine` takes `kind`, `currentText`, `instruction`, `baseContext`, `history`.
+`/v1/compose` additionally takes `idea`, `feed`, `trends`, `feedGrounding`, `webSearch`, and an optional `product` object (name, description, link, mention, media). `/v1/refine` takes `kind`, `currentText`, `instruction`, `baseContext`, `history`.
 
 ## Product extraction
 
