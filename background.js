@@ -242,6 +242,46 @@ function mockRefine({ currentText, instruction }) {
   return { text: `${currentText} (${tweak || "refined"})` };
 }
 
+// Offline sample candidates for QA and store review. No network, no search key.
+function generateMockDiscover({ product }) {
+  const name = String(product?.name || "your product").trim() || "your product";
+  return {
+    query: `Recent X posts where someone could use ${name}`,
+    candidates: [
+      {
+        url: "https://x.com/example/status/1000000000000000001",
+        handle: "@builder_dev",
+        authorName: "Dana — building in public",
+        verified: true,
+        avatar: "",
+        likes: 142,
+        replies: 28,
+        reposts: 9,
+        views: 18400,
+        postedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+        snippet: "anyone got a tool that actually keeps an AI agent on spec? mine keeps drifting halfway through",
+        why: "Directly asking for a tool in exactly this space.",
+        angle: `Answer with your own experience first; ${name} fits as a plain recommendation.`
+      },
+      {
+        url: "https://x.com/example/status/1000000000000000002",
+        handle: "@indiehacker",
+        authorName: "Marco Reyes",
+        verified: false,
+        avatar: "",
+        likes: 37,
+        replies: 6,
+        reposts: 1,
+        views: 5200,
+        postedAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
+        snippet: "spent the whole day cleaning up agent output instead of shipping. there has to be a better way",
+        why: "Venting the exact pain point the product touches.",
+        angle: "Share the firsthand fix; mention the product only if it lands naturally."
+      }
+    ]
+  };
+}
+
 function generateMockProduct({ url, text }) {
   const seed = String(text || url || "").trim();
   const guess = seed
@@ -536,6 +576,34 @@ async function extractProduct({ url, text }) {
   return authedApi("/v1/extract", { url: url || "", text: text || "" });
 }
 
+// Finds X posts worth replying to about one of the user's products. The hosted
+// API holds the search key and does the search + ranking; this just resolves
+// the chosen product from local storage and passes it through. Results are
+// returned to the panel and never persisted (no lead list, no monitor).
+async function discoverPosts({ productId }) {
+  const settings = await chrome.storage.local.get(SETTINGS_DEFAULTS);
+  const product = findProduct(settings, productId);
+
+  if (settings.mockMode) {
+    return generateMockDiscover({ product });
+  }
+
+  if (!product) {
+    throw new Error("That product no longer exists. Pick another in the panel.");
+  }
+
+  return authedApi("/v1/discover", {
+    product: {
+      name: product.name,
+      description: product.description,
+      link: product.link,
+      mention: product.mention
+    },
+    model: settings.model || SETTINGS_DEFAULTS.model,
+    profile: buildProfilePayload(settings)
+  });
+}
+
 // --- Messaging --------------------------------------------------------------
 
 const HANDLERS = {
@@ -543,6 +611,7 @@ const HANDLERS = {
   "pennai.compose": generatePost,
   "pennai.refine": refineDraft,
   "pennai.extract": extractProduct,
+  "pennai.discover": discoverPosts,
   "pennai.account": getAccount,
   "pennai.signin": startSignIn,
   "pennai.signout": signOut,
@@ -577,10 +646,12 @@ if (typeof module !== "undefined") {
   module.exports = {
     API_BASE,
     buildProfilePayload,
+    discoverPosts,
     enforceReplyPolicy,
     extractProduct,
     findProduct,
     formatProductBlock,
+    generateMockDiscover,
     generateMockPost,
     generateMockProduct,
     generateMockReplies,

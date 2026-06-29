@@ -43,8 +43,17 @@ export async function bootstrap() {
       user_id text NOT NULL,
       day date NOT NULL,
       calls integer NOT NULL DEFAULT 0,
+      discovers integer NOT NULL DEFAULT 0,
+      tokens bigint NOT NULL DEFAULT 0,
       PRIMARY KEY (user_id, day)
     );
+  `);
+  // Additive columns for pre-existing deployments (CREATE TABLE IF NOT EXISTS
+  // leaves an existing table untouched). discovers = the separate Discover
+  // abuse counter; tokens = model token spend for the per-user daily ceiling.
+  await pool.query(`
+    ALTER TABLE usage_daily ADD COLUMN IF NOT EXISTS discovers integer NOT NULL DEFAULT 0;
+    ALTER TABLE usage_daily ADD COLUMN IF NOT EXISTS tokens bigint NOT NULL DEFAULT 0;
   `);
 }
 
@@ -181,4 +190,67 @@ export async function refundUsage(userId) {
      WHERE user_id = $1 AND day = CURRENT_DATE`,
     [userId]
   );
+}
+
+// Calls made so far this calendar month (UTC), summed across daily rows. Backs
+// the per-plan monthly fair-use ceiling, the backstop the 100/day cap alone
+// does not provide against a user who runs near the cap every day.
+export async function getMonthlyUsage(userId) {
+  const result = await pool.query(
+    `SELECT COALESCE(SUM(calls), 0)::int AS calls FROM usage_daily
+     WHERE user_id = $1 AND day >= date_trunc('month', CURRENT_DATE)`,
+    [userId]
+  );
+  return result.rows[0]?.calls || 0;
+}
+
+export async function getTokenUsage(userId) {
+  const result = await pool.query(
+    "SELECT tokens FROM usage_daily WHERE user_id = $1 AND day = CURRENT_DATE",
+    [userId]
+  );
+  return Number(result.rows[0]?.tokens || 0);
+}
+
+// Records model token spend against today's row for per-user cost visibility and
+// the daily token ceiling. The row always exists by the time a model call
+// returns (authorizeCall reserved the call first), so a plain UPDATE suffices.
+// Emits a one-time structured warning when a user crosses the alert threshold,
+// so a runaway account is visible in logs before the provider bill arrives.
+const TOKEN_ALERT = 250_000;
+export async function addTokens(userId, tokens) {
+  if (!Number.isFinite(tokens) || tokens <= 0) return;
+  const amount = Math.round(tokens);
+  const result = await pool.query(
+    `UPDATE usage_daily SET tokens = tokens + $2
+     WHERE user_id = $1 AND day = CURRENT_DATE
+     RETURNING tokens`,
+    [userId, amount]
+  );
+  const after = Number(result.rows[0]?.tokens || 0);
+  if (after - amount < TOKEN_ALERT && after >= TOKEN_ALERT) {
+    console.warn(JSON.stringify({ alert: "high_token_user", user: userId, tokensToday: after }));
+  }
+}
+
+// Discover attempts are metered separately and NEVER refunded: a search that
+// runs costs a SocialCrawl credit and a curation call even when it yields no
+// candidate, so the daily-call refund (good UX) must not also hand back a free
+// retry. This counter is the real abuse ceiling on Discover.
+export async function bumpDiscover(userId) {
+  const result = await pool.query(
+    `INSERT INTO usage_daily (user_id, day, discovers) VALUES ($1, CURRENT_DATE, 1)
+     ON CONFLICT (user_id, day) DO UPDATE SET discovers = usage_daily.discovers + 1
+     RETURNING discovers`,
+    [userId]
+  );
+  return result.rows[0].discovers;
+}
+
+export async function getDiscoverUsage(userId) {
+  const result = await pool.query(
+    "SELECT discovers FROM usage_daily WHERE user_id = $1 AND day = CURRENT_DATE",
+    [userId]
+  );
+  return result.rows[0]?.discovers || 0;
 }

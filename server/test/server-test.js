@@ -6,6 +6,7 @@ import {
   parseReplyResult,
   parseRefineResult,
   parseExtractResult,
+  parseDiscoverResult,
   sanitizeReplyText,
   enforceReplyPolicy,
   violatesReplyPolicy
@@ -14,13 +15,18 @@ import {
   SYSTEM_PROMPT,
   POST_SYSTEM_PROMPT,
   EXTRACT_SYSTEM_PROMPT,
+  DISCOVER_SYSTEM_PROMPT,
   formatUserContext,
   selectRelevantProducts,
   buildReplyUserText,
   buildPostInput,
-  buildExtractInput
+  buildExtractInput,
+  buildDiscoverQuery,
+  buildDiscoverInput
 } from "../src/prompts.js";
-import { filterImages } from "../src/openai.js";
+import { filterImages, productNamesFromText, countProductMentions } from "../src/openai.js";
+import { selectDiscoveries } from "../src/socialcrawl.js";
+import { STRONG_PROMOTE_DIRECTIVE } from "../src/prompts.js";
 import { buildSourceFromHtml, isPrivateIp } from "../src/fetchPage.js";
 import { PLANS } from "../src/quota.js";
 
@@ -181,10 +187,144 @@ assert.equal(isPrivateIp("::1"), true);
 assert.equal(isPrivateIp("::ffff:127.0.0.1"), true);
 assert.equal(isPrivateIp("8.8.8.8"), false);
 
+// --- Product-mention enforcement -------------------------------------------------
+
+// The hard count rule lives in the prompt, and the server can count mentions to
+// decide whether to force a stronger second pass.
+assert.match(SYSTEM_PROMPT, /HARD RULE ON PRODUCT COUNT/);
+assert.match(SYSTEM_PROMPT, /at least three/i);
+assert.match(STRONG_PROMOTE_DIRECTIVE, /at least THREE/);
+
+// Product names come from the first line of each saved block; tiny names dropped.
+assert.deepEqual(
+  productNamesFromText("Wasfa\nRecipe keeper.\n\nPenn\nReply copilot."),
+  ["Wasfa", "Penn"]
+);
+assert.deepEqual(productNamesFromText("ai\nToo short to match."), []);
+
+// Counting catches mentions by name (case-insensitive) and by own-link host.
+assert.equal(
+  countProductMentions(
+    [
+      { text: "wasfa ended up being nice for that" },
+      { text: "just a clean human reply" },
+      { text: "been using it, see heypenn.com" },
+      { text: "another clean one" }
+    ],
+    ["Wasfa"],
+    ["heypenn.com"]
+  ),
+  2
+);
+
+// The promote directive threads into the reply prompt only when supplied.
+assert.match(
+  buildReplyUserText({ note: "", threadText: "t", profile, hasImages: false, promoteDirective: STRONG_PROMOTE_DIRECTIVE }),
+  /at least THREE/
+);
+assert.doesNotMatch(
+  buildReplyUserText({ note: "", threadText: "t", profile, hasImages: false }),
+  /at least THREE/
+);
+
+// --- Discovery (find X posts to reply to about a product) ------------------------
+
+// The query is seeded from the product's "mention" rule (the strongest signal),
+// falling back to description, then name.
+const discoverProduct = { name: "Spec tool", description: "Keeps agents on spec.", mention: "someone whose AI agent keeps drifting off spec" };
+const discoverQuery = buildDiscoverQuery(discoverProduct);
+assert.match(discoverQuery, /Spec tool/);
+assert.match(discoverQuery, /drifting off spec/);
+assert.ok(discoverQuery.length <= 480);
+assert.equal(buildDiscoverQuery(null), "");
+
+// The curation prompt is told never to invent a URL and not to draft the reply.
+assert.match(DISCOVER_SYSTEM_PROMPT, /Never (invent|fabricate)/i);
+assert.match(DISCOVER_SYSTEM_PROMPT, /NOT a written reply|Do not draft the reply/i);
+
+// The input carries the product, the user's profile, and only the returned posts.
+const discoverInput = buildDiscoverInput({
+  product: discoverProduct,
+  profile,
+  answer: "People keep complaining about agent drift.",
+  sources: [{ url: "https://x.com/a/status/1", handle: "@a", text: "my agent keeps ignoring the spec" }]
+});
+assert.match(discoverInput, /Spec tool/);
+assert.match(discoverInput, /status\/1/);
+assert.match(discoverInput, /Never sound like these examples/);
+
+// Parser keeps only candidates with a real X status URL and dedupes (it now caps
+// at a wider 12 — the route enriches and trims that pool down to the few shown).
+const discovered = parseDiscoverResult(JSON.stringify({
+  candidates: [
+    { url: "https://x.com/a/status/123", handle: "@a", snippet: "needs a spec tool", why: "asking", angle: "answer plainly" },
+    { url: "https://twitter.com/b/status/456", handle: "@b", snippet: "agent drift pain", why: "venting", angle: "share experience" },
+    { url: "https://x.com/a/status/123", handle: "@a", snippet: "dup", why: "dup", angle: "dup" },
+    { url: "https://example.com/not-a-post", handle: "@c", snippet: "nope", why: "x", angle: "x" },
+    { url: "https://x.com/d", handle: "@d", snippet: "profile link only", why: "x", angle: "x" }
+  ]
+}));
+assert.equal(discovered.candidates.length, 2);
+assert.equal(discovered.candidates[0].url, "https://x.com/a/status/123");
+assert.equal(discovered.candidates[1].url, "https://twitter.com/b/status/456");
+assert.throws(() => parseDiscoverResult("{}"), /invalid discovery/);
+// Empty list is valid (no genuine openings found).
+assert.equal(parseDiscoverResult(JSON.stringify({ candidates: [] })).candidates.length, 0);
+
+// --- selectDiscoveries: enrich-merge, filter dead/buried, diversify, rank ---
+const dcU = (n) => `https://x.com/x/status/${n}`;
+const dcCandidates = [
+  { url: dcU(1), handle: "@a", snippet: "s1", why: "w", angle: "g" },
+  { url: dcU(2), handle: "@b", snippet: "s2", why: "w", angle: "g" },
+  { url: dcU(3), handle: "@a", snippet: "s3", why: "w", angle: "g" }, // same author as #1
+  { url: dcU(4), handle: "@c", snippet: "s4", why: "w", angle: "g" }, // buried/dead
+  { url: dcU(5), handle: "@d", snippet: "s5", why: "w", angle: "g" }  // unknown metrics
+];
+const dcEnrich = new Map([
+  [dcU(1), { handle: "@a", authorName: "Alice", verified: true, avatar: "", deleted: false, likes: 12, replies: 4, reposts: 1, views: 9000, postedAt: null }],
+  [dcU(2), { handle: "@b", authorName: "Bob", verified: false, avatar: "", deleted: false, likes: 200, replies: 30, reposts: 5, views: 50000, postedAt: null }],
+  [dcU(3), { handle: "@a", authorName: "Alice", verified: true, avatar: "", deleted: false, likes: 8, replies: 2, reposts: 0, views: 3000, postedAt: null }],
+  [dcU(4), { handle: "@c", authorName: "Cara", verified: false, avatar: "", deleted: false, likes: 1, replies: 0, reposts: 0, views: 40, postedAt: null }]
+  // dcU(5) intentionally absent: enrichment failed -> metrics unknown.
+]);
+const selected = selectDiscoveries(dcCandidates, dcEnrich, { limit: 3 });
+// Live metrics merged onto candidates.
+assert.equal(selected[0].url, dcU(2)); // highest traction ranks first
+assert.equal(selected[0].likes, 200);
+assert.equal(selected[0].authorName, "Bob");
+// Variety: the two @a posts don't both appear before other authors are exhausted.
+const handles = selected.map((c) => c.handle);
+assert.equal(new Set(handles).size, handles.length, "no author repeats within the shown set");
+// The dead/buried post (@c, 1 like / 0 replies / 40 views) is filtered out.
+assert.ok(!selected.some((c) => c.url === dcU(4)), "buried 1-like post dropped");
+// Unknown-metrics post is still eligible (shown without metrics, not dropped).
+assert.equal(selectDiscoveries([dcCandidates[4]], new Map(), { limit: 3 })[0].likes, null);
+
+// Deleted posts are always dropped.
+const delMap = new Map([[dcU(1), { handle: "@a", deleted: true, likes: 99, replies: 9, views: 9000 }]]);
+assert.equal(selectDiscoveries([dcCandidates[0]], delMap, { limit: 3 }).length, 0);
+
+// Relax-on-empty: if nothing clears the visibility bar, show the best dim post
+// rather than returning nothing.
+const dimOnly = selectDiscoveries(
+  [dcCandidates[3]],
+  new Map([[dcU(4), { handle: "@c", deleted: false, likes: 1, replies: 0, views: 40 }]]),
+  { limit: 3 }
+);
+assert.equal(dimOnly.length, 1, "low-engagement post shown as a last resort");
+
 // Plan shape sanity.
 assert.equal(PLANS.free.compose, false);
 assert.equal(PLANS.pro.compose, true);
 assert.ok(PLANS.pro.dailyCalls > PLANS.free.dailyCalls);
 assert.ok(PLANS.free.models.every((m) => PLANS.pro.models.includes(m)));
+
+// Layered abuse caps: Discover is gated off for free and bounded well under the
+// daily call cap for pro; the monthly backstop is at least a day's allowance;
+// every plan has a per-user daily token circuit breaker.
+assert.equal(PLANS.free.discoverDaily, 0);
+assert.ok(PLANS.pro.discoverDaily > 0 && PLANS.pro.discoverDaily < PLANS.pro.dailyCalls);
+assert.ok(PLANS.pro.monthlyCalls >= PLANS.pro.dailyCalls);
+assert.ok(PLANS.free.dailyTokenCeiling > 0 && PLANS.pro.dailyTokenCeiling > 0);
 
 console.log("server tests ok");

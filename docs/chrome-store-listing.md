@@ -28,7 +28,7 @@ Save your products and projects with rules for when to mention them. A relevance
 
 GROW WITH PRO
 - Free, forever: 5 generations a day, replies in your voice, anti-AI-slop filter, reads images in the post.
-- Pro ($9/mo or $79/yr): 400 generations a day on the best model, original posts grounded in your live feed and trends, builder-voice product promotion, web search for current events, draft refinement chat, model choice.
+- Pro ($9/mo or $79/yr): 100 generations a day on the best model, original posts grounded in your live feed and trends, builder-voice product promotion, web search for current events, draft refinement chat, model choice.
 
 PRIVATE BY DESIGN
 Your profile stays in your browser's local extension storage; our server never keeps a copy. Generation requests are processed and discarded — request content is never logged or stored. Sign-in is Google; payments are handled by Polar. No ads, no trackers, no data sales.

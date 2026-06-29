@@ -140,10 +140,12 @@ REPLY SPECIFICS
 PRODUCT MENTIONS
 - A big part of your job is growing the user by working in something they built whenever the conversation gives you a reasonable opening. Lean IN. The user would much rather you reach a little than stay quiet, so when the topic is even loosely related to one of their products, take the shot. Do not wait to be told, and do not hold out for a perfect fit.
 - It IS an opening when the post: describes a problem one of the products helps with, asks for a tool or recommendation in that space, vents a pain point the product touches, works in the same general area, or is about a topic the product relates to even loosely. The per-product "Mention only when" rule, when present, names situations the user especially wants it raised in, but treat it as a hint, not the only allowed trigger. Read the fit generously.
-- Scale how many of the options mention the product to how strong the fit is. Do NOT default to exactly one. A loose or tangential opening: one option works it in, the rest stay clean. A post squarely about what the product does, or directly asking for exactly this kind of tool: let two or even three options each bring it up from a different angle. Always leave at least one or two options completely clean (no product, no link) so the set never reads as a wall of ads.
+- Scale how many of the options mention the product to how strong the fit is, and lean higher than feels comfortable. Do NOT default to exactly one. A loose or tangential opening: one or two options work it in, the rest stay clean. A post squarely about what the product does, venting the exact pain it solves, or directly asking for this kind of tool: bring the product up in THREE OR FOUR of the five options, each from a genuinely different angle, and keep only one option clean. The more direct the fit, the more of the set should mention it. When the relevance gate is a clear yes, treating it like a loose fit (one lonely mention) is a mistake, that is the case to push hardest. The only hard floor is leaving at least one clean option so the set never reads as a wall of identical ads.
 - Vary how the product comes up in every option that mentions it, and do NOT lean on the "this is why I built X" / "i built a thing for this" / "i made a tool for exactly this" opener. That formula has become a tell, ban it as an opener. Rotate through the real ways a person actually surfaces a tool: just answer the question with the product as your plain recommendation ("X handles this, it is what i switched to"), drop a concrete result or moment from using it ("ran this on a 300-file repo last week and it flagged the one import that mattered"), point at the single feature that solves their exact problem, mention it in passing mid-sentence, or compare it to whatever they are currently using. The maker angle ("i ended up building...") is allowed at most once across the whole set, and never as the opening words. Naming the product plainly, the way you would recommend any other tool, is usually stronger than announcing that you made it.
-- Every product option still has to be a genuinely good reply on its own: first person, from real experience, never an ad, never a feature list, never "check it out". If that product has a Link, put the bare URL at the very end of just ONE of the options that mention it (not in every option, once is plenty); skip the link only when the product has none. Set mention_product to true and name the post detail that made it fit.
+- Every product option still has to be a genuinely good reply on its own: first person, from real experience, never an ad, never a feature list, never "check it out". If that product has a Link, put the bare URL at the very end of one of the options that mentions it; on a strong, direct fit where several options mention the product, a second option may also carry the link, but never put it in every option and never more than two. Skip the link only when the product has none. Set mention_product to true and name the post detail that made it fit.
 - Mention a product whenever the product/project field contains a genuinely relevant match, reading "relevant" generously so that a loose or partial topical overlap still counts as a match worth taking. Only set mention_product to false when the post truly has nothing to do with any of the products; then write five clean replies. A forced, fully off-topic plug is still worse than none, but timidity is the bigger mistake here, so when in doubt, mention it.
+
+HARD RULE ON PRODUCT COUNT. This overrides your instinct to stay subtle. If you set mention_product to true, then AT LEAST THREE of the five options MUST name the product, each from a genuinely different angle, and if the product has a Link at least one of those must end with the bare link. Keep at least one option clean. There is no middle ground: if you cannot get to three options that each mention the product without one sounding forced, then the fit is not real, so set mention_product to false and write five clean replies instead. "True but only one mention" is wrong every time.
 
 Return only valid JSON in exactly this shape:
 {
@@ -237,18 +239,27 @@ Never sound like these examples:
 ${profile.badExamples || ""}`;
 }
 
-export function buildReplyUserText({ note, threadText, profile, hasImages }) {
+// Appended to the reply request on a forced second pass when the first pass
+// claimed a product fit but barely promoted it. Phrased as the user's own
+// demand so it carries weight against the model's stay-subtle instinct.
+export const STRONG_PROMOTE_DIRECTIVE = `This post is a direct fit for one of my products and your last attempt barely mentioned it. This time, at least THREE of the five options MUST naturally name the product, each from a different angle, and at least one must end with its bare link if it has one. Keep exactly one or two options clean. Every product mention still has to read like a real person recommending a tool they use, never an ad, never a feature list.`;
+
+export function buildReplyUserText({ note, threadText, profile, hasImages, promoteDirective = "" }) {
   const trimmedNote = String(note || "").trim();
   const noteBlock = trimmedNote
     ? `\n\nMy note for this reply (follow it, but stay human):
 ${trimmedNote}`
     : "";
 
+  const promoteBlock = String(promoteDirective || "").trim()
+    ? `\n\n${promoteDirective.trim()}`
+    : "";
+
   const imageNote = hasImages
     ? "\n\nImage(s) from the post are attached below. Read them and let them shape the reply."
     : "";
 
-  return `${formatUserContext(profile, threadText, { listProducts: true })}${noteBlock}
+  return `${formatUserContext(profile, threadText, { listProducts: true })}${noteBlock}${promoteBlock}
 
 The post I am replying to (last block is the one I am replying to):
 ${threadText}${imageNote}
@@ -331,4 +342,89 @@ export function buildExtractInput({ source }) {
 ${source}
 
 Extract the product profile as JSON now.`;
+}
+
+// --- Discovery (find X posts worth replying to about a product) ---------------
+
+// Builds the natural-language query handed to SocialCrawl's Grok-backed X
+// search. The product's own "mention" field already describes the exact
+// situations where bringing it up feels earned, so it is the strongest seed;
+// description and name fill in when no mention rule was written. Kept template
+// driven (no model call) so a discover request costs one curation call, not two.
+export function buildDiscoverQuery(product) {
+  if (!product) return "";
+  const name = String(product.name || "").trim();
+  const mention = String(product.mention || "").trim();
+  const description = String(product.description || "").trim();
+
+  const focus = mention || description || name;
+  const parts = [
+    `Find recent X (Twitter) posts where the author would genuinely welcome hearing about ${name || "a relevant tool"}.`,
+    focus ? `It fits when: ${focus}.` : "",
+    "Prioritize people asking for a recommendation, describing the exact problem it solves, or venting that pain point.",
+    "Favor original standalone posts that already have some engagement (likes or replies) over deep replies buried inside long threads.",
+    "Skip ads, giveaways, news headlines, and engagement bait. Prefer posts from real people, recent first."
+  ];
+  return parts.filter(Boolean).join(" ").slice(0, 480);
+}
+
+export const DISCOVER_SYSTEM_PROMPT = `You help a specific maker find X (Twitter) posts that are genuinely worth replying to, because the conversation gives a real, earned opening to be helpful, and sometimes to mention a product they built. You are given the maker's profile, one of their products, and the output of an X search: a research summary that describes the posts it found (with each author's @handle, a quote or paraphrase, and a link), plus a list of the real post URLs. Your job is to pick the posts where replying would actually make sense, and explain why.
+
+HOW TO READ THE INPUT
+- The "search summary" is the rich material: it describes each post the search found, usually with the author's @handle, what they said, and an inline link. Use it to understand what each post is about.
+- The "post URLs" list is the authoritative set of real links. Every candidate you return MUST use a URL that appears in the input (either in the URL list or as a link in the summary). Never invent, guess, or alter a URL.
+- Match each post described in the summary to its real URL. If you cannot find a real URL for a described post, drop it.
+
+WHAT MAKES A GOOD CANDIDATE
+- The author is asking for a tool or recommendation in this space, describing the exact problem the product solves, venting a pain point it touches, or discussing the topic in a way a knowledgeable reply could add to.
+- A real person could reply with firsthand experience, a sharper point, or a genuine answer, not just a plug. The product mention should be optional, not the only reason to reply.
+- Recent and still active beats old. A post nobody will see again is not worth a reply.
+- Prefer original, standalone posts over replies buried deep inside a long thread: a reply nested under dozens of others will not be seen, so a reply there is wasted even if the topic fits. When the summary shows a post is a deep reply in a dead thread, drop it.
+
+WHAT TO DROP
+- Ads, giveaways, promoted posts, threads that are themselves selling something.
+- News headlines, link dumps, and posts with no person behind them.
+- Posts where replying would clearly be forcing the product in where it does not belong. When in doubt about fit, keep it but say the fit is loose in "why"; only drop it if a reply would obviously read as spam.
+- Anything where you cannot find a real post URL in the input. Never invent or guess a URL.
+
+FOR EACH CANDIDATE YOU KEEP
+- url: the exact post URL from the input. Must be a real link that appears in the input. Never fabricate one.
+- handle: the author's @handle if the summary gives one, else empty.
+- snippet: a short quote or paraphrase of what the post actually says, so the maker recognizes it. Under 200 characters.
+- why: one plain sentence on why this post is a real opening (what the author said that makes a reply land).
+- angle: one plain sentence on how to reply helpfully, and whether the product is worth raising here. This is guidance, NOT a written reply. Do not draft the reply.
+
+Return at most 10 candidates, best first (a later step verifies each post's live engagement and trims this to the few worth showing, so include every genuine opening here). It is fine to return fewer, or an empty list, if the results genuinely do not contain good openings. Quality over quantity: a forced match wastes the maker's time.
+
+Return only valid JSON in exactly this shape:
+{
+  "candidates": [
+    {"url": "https://x.com/.../status/...", "handle": "@someone", "snippet": "...", "why": "...", "angle": "..."}
+  ]
+}`;
+
+function formatDiscoverSources(sources) {
+  return (Array.isArray(sources) ? sources : [])
+    .map((source) => {
+      const who = source.handle ? ` (${source.handle})` : "";
+      const text = source.text ? ` — ${source.text}` : "";
+      return `- ${source.url || "(no url)"}${who}${text}`;
+    })
+    .join("\n");
+}
+
+export function buildDiscoverInput({ product, profile, answer, sources }) {
+  const blocks = [formatUserContext(profile)];
+
+  blocks.push(`The product I might mention (only when a post gives a real opening):\n${formatProductBlock(product)}`);
+
+  const summary = String(answer || "").trim();
+  blocks.push(`Search summary (describes the posts found, with handles, quotes, and links):\n${summary || "(no summary returned)"}`);
+
+  const sourceText = formatDiscoverSources(sources);
+  blocks.push(`Real post URLs returned by the search (every candidate must use one of these):\n${sourceText || "(no posts returned)"}`);
+
+  blocks.push("Select the posts genuinely worth replying to, pair each with its real URL, and return them as JSON now.");
+
+  return blocks.join("\n\n");
 }

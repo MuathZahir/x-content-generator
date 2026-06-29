@@ -89,6 +89,229 @@
   font-weight: 600;
 }
 
+/* Top-level tabs (Assist / Discover) */
+.pennai-nav {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--cr-border);
+}
+
+.pennai-panel .pennai-tab {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--cr-muted);
+  font-weight: 700;
+  font-size: 12.5px;
+}
+
+.pennai-panel .pennai-tab:hover {
+  background: var(--cr-bg-elev);
+  color: var(--cr-text);
+}
+
+.pennai-panel .pennai-tab.pennai-tab-active {
+  background: var(--cr-accent-soft);
+  color: var(--cr-accent);
+}
+
+/* Discover view */
+.pennai-discover {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pennai-discover-intro {
+  color: var(--cr-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.pennai-card-hint {
+  color: var(--cr-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.pennai-card {
+  border: 1px solid var(--cr-border);
+  border-radius: 14px;
+  padding: 12px 13px;
+  background: var(--cr-bg-elev);
+  color: var(--cr-text);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  animation: pennai-fade 240ms ease both;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.pennai-card:hover {
+  border-color: var(--cr-border-strong);
+  box-shadow: 0 6px 18px -10px rgba(0, 0, 0, 0.6);
+}
+
+.pennai-card-visited {
+  opacity: 0.55;
+}
+
+/* Author header */
+.pennai-card-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.pennai-avatar {
+  position: relative;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: linear-gradient(140deg, var(--cr-accent), #8b5cf6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pennai-avatar-mono {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.pennai-avatar-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pennai-card-ident {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.pennai-card-namerow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pennai-card-name {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--cr-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pennai-verified {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  color: var(--cr-accent);
+}
+
+.pennai-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--cr-muted);
+  font-size: 12px;
+  min-width: 0;
+}
+
+.pennai-card-handle {
+  color: var(--cr-muted);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pennai-card-dot {
+  opacity: 0.7;
+}
+
+.pennai-card-snippet {
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+/* Engagement row */
+.pennai-card-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: var(--cr-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pennai-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+}
+
+.pennai-stat-icon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.85;
+}
+
+.pennai-card-why {
+  color: var(--cr-text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pennai-card-angle {
+  color: var(--cr-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.pennai-card-angle-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--cr-accent-soft);
+  color: var(--cr-accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+.pennai-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1px;
+}
+
+.pennai-card-actions button {
+  padding: 6px 14px;
+  font-size: 12px;
+}
+
 /* Controls */
 .pennai-row {
   display: flex;

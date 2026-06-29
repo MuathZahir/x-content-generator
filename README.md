@@ -11,7 +11,8 @@ It is intentionally human-in-the-loop. It does not auto-post, auto-like, scrape 
 - Injects a reply assistant panel into X/Twitter reply composers, plus a compose view for original posts and product promotion.
 - Stores your profile, products/projects (with photos), tone, forbidden phrases, and bad examples in local Chrome extension storage. The server never keeps a copy.
 - Sign in with Google from the toolbar popup; the extension pairs to your account with a private device token.
-- Free plan: 5 generations/day for replies. Pro ($9/mo, $79/yr via Polar): 400/day, original posts grounded in your live feed, product promotion, web search, model choice.
+- Free plan: 5 generations/day for replies. Pro ($9/mo, $79/yr via Polar): 100/day (1,500/month fair-use), original posts grounded in your live feed, product promotion, web search, model choice, and Discover (find X posts worth replying to about your products, up to 15/day).
+- Discover (Pro): a tab that searches recent X posts where one of your products is a genuine answer, ranks them, and explains the opening. You open a post and reply in your own words; it never auto-replies and never stores a list. Search runs server-side through SocialCrawl; the X-only lane is the first step, with other platforms (Reddit, LinkedIn) possible later.
 - Prompts and the anti-AI-tell policy filter (no "not X, it's Y" flips, no em dashes, no hype words, no engagement bait) run server-side, with a defensive mirror in the client.
 - A relevance gate decides whether mentioning one of your products is genuinely warranted; usually it is not, and that is the point.
 - Supports `Alt+Shift+R` to suggest replies for the active composer.

@@ -40,6 +40,7 @@ const {
   generatePost,
   refineDraft,
   extractProduct,
+  discoverPosts,
   getAccount
 } = require("../background.js");
 
@@ -190,6 +191,49 @@ async function main() {
   const extractBody = JSON.parse(fetchCalls[0].options.body);
   assert.equal(extractBody.url, "https://heypenn.com");
   assert.equal(extracted.product.name, "Penn AI");
+
+  // 8c. Discover in mock mode returns sample candidates without any network.
+  storedSettings = {
+    mockMode: true,
+    productList: [{ id: "p1", name: "Spec tool", description: "Keeps agents on spec.", mention: "agent drift" }]
+  };
+  fetchCalls = [];
+  const mockDiscover = await discoverPosts({ productId: "p1" });
+  assert.equal(fetchCalls.length, 0);
+  assert.ok(mockDiscover.candidates.length > 0);
+  assert.ok(mockDiscover.candidates.every((c) => /\/status\/\d+/.test(c.url)));
+  // Mock candidates carry the enrichment fields the redesigned cards render
+  // (author name + live engagement), so the panel can be exercised offline.
+  assert.ok(mockDiscover.candidates.every((c) => typeof c.authorName === "string" && typeof c.likes === "number"));
+
+  // 8d. Signed in: one POST to /v1/discover with the bearer token and product.
+  storedSettings = {
+    mockMode: false,
+    apiToken: "penn_discover",
+    productList: [{ id: "p1", name: "Spec tool", description: "Keeps agents on spec.", mention: "agent drift", link: "https://spec.tool" }]
+  };
+  fetchCalls = [];
+  fetchResponder = (url) => {
+    assert.equal(url, `${API_BASE}/v1/discover`);
+    return jsonResponse({
+      query: "q",
+      candidates: [{ url: "https://x.com/a/status/1", handle: "@a", snippet: "needs a spec tool", why: "asking", angle: "answer plainly" }]
+    });
+  };
+  const discovered = await discoverPosts({ productId: "p1" });
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0].options.headers.Authorization, "Bearer penn_discover");
+  const discoverBody = JSON.parse(fetchCalls[0].options.body);
+  assert.equal(discoverBody.product.name, "Spec tool");
+  assert.equal(discoverBody.product.link, "https://spec.tool");
+  assert.match(discoverBody.profile.products, /Spec tool/);
+  assert.equal(discovered.candidates.length, 1);
+
+  // 8e. Live discover for a product that no longer exists fails before any call.
+  storedSettings = { mockMode: false, apiToken: "penn_discover", productList: [] };
+  fetchCalls = [];
+  await assert.rejects(() => discoverPosts({ productId: "gone" }), /no longer exists/);
+  assert.equal(fetchCalls.length, 0);
 
   // 8. The profile payload carries every saved field and nothing secret.
   const payload = buildProfilePayload({

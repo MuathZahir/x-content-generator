@@ -1,12 +1,30 @@
-import { getBilling, getUsage, bumpUsage, refundUsage } from "./db.js";
+import {
+  getBilling,
+  getUsage,
+  bumpUsage,
+  refundUsage,
+  getMonthlyUsage,
+  getTokenUsage
+} from "./db.js";
 
 // Value ladder: replying is free forever (capped daily, fast model). Pro
 // unlocks the growth surface: original posts, product promotion, web-grounded
-// drafts, model choice, and a cap nobody honest will hit.
+// drafts, model choice, and Discover.
+//
+// Caps are layered so no single dimension has to carry abuse protection alone:
+//   dailyCalls       - per-day call allowance (the headline number).
+//   monthlyCalls     - fair-use backstop so near-cap-every-day still has a ceiling.
+//   discoverDaily    - separate, never-refunded ceiling on Discover (each runs a
+//                      paid SocialCrawl credit + a curation call; see db.bumpDiscover).
+//   dailyTokenCeiling- per-user circuit breaker in model tokens, so one heavy user
+//                      cannot drain the shared daily token pool for everyone.
 export const PLANS = {
   free: {
     name: "Free",
     dailyCalls: 5,
+    monthlyCalls: null,
+    discoverDaily: 0,
+    dailyTokenCeiling: 60_000,
     models: ["gpt-5.4-mini"],
     defaultModel: "gpt-5.4-mini",
     webSearch: false,
@@ -14,7 +32,10 @@ export const PLANS = {
   },
   pro: {
     name: "Pro",
-    dailyCalls: 400,
+    dailyCalls: 100,
+    monthlyCalls: 1500,
+    discoverDaily: 15,
+    dailyTokenCeiling: 300_000,
     models: ["gpt-5.4", "gpt-5.4-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini"],
     defaultModel: "gpt-5.4",
     webSearch: true,
@@ -39,9 +60,13 @@ export async function getEntitlements(userId) {
     currentPeriodEnd: billing.currentPeriodEnd || null,
     limits: {
       dailyCalls: plan.dailyCalls,
+      monthlyCalls: plan.monthlyCalls,
+      discoverDaily: plan.discoverDaily,
       models: plan.models,
       webSearch: plan.webSearch,
-      compose: plan.compose
+      compose: plan.compose,
+      // Post discovery is a Pro growth surface, gated alongside compose.
+      discover: plan.compose
     },
     usedToday: used,
     remainingToday: Math.max(0, plan.dailyCalls - used)
@@ -65,6 +90,13 @@ export async function authorizeCall(userId, { kind, requestedModel, webSearch })
     );
   }
 
+  if (kind === "discover" && !plan.compose) {
+    throw new QuotaError(
+      "upgrade_required",
+      "Finding posts to reply to is a Pro feature. Replies stay free."
+    );
+  }
+
   const used = await getUsage(userId);
   if (used >= plan.dailyCalls) {
     throw new QuotaError(
@@ -73,6 +105,28 @@ export async function authorizeCall(userId, { kind, requestedModel, webSearch })
         ? `You've used today's ${plan.dailyCalls} free generations. Upgrade to Pro for ${PLANS.pro.dailyCalls}/day, posts, and the best model.`
         : "Daily fair-use limit reached. It resets at midnight UTC."
     );
+  }
+
+  // Monthly backstop: the daily cap alone lets a user run near it every day, so
+  // a calendar-month ceiling bounds sustained heavy use.
+  if (plan.monthlyCalls) {
+    const usedMonth = await getMonthlyUsage(userId);
+    if (usedMonth >= plan.monthlyCalls) {
+      throw new QuotaError("rate_limited", "Monthly fair-use limit reached. It resets on the 1st (UTC).");
+    }
+  }
+
+  // Per-user token circuit breaker: caps the share of the shared daily model
+  // token pool any one account can consume, independent of call count (a few
+  // huge-context calls can cost more than many small ones).
+  if (plan.dailyTokenCeiling) {
+    const tokensToday = await getTokenUsage(userId);
+    if (tokensToday >= plan.dailyTokenCeiling) {
+      throw new QuotaError(
+        billing.plan === "free" ? "free_limit_reached" : "rate_limited",
+        "Daily usage limit reached. It resets at midnight UTC."
+      );
+    }
   }
 
   await bumpUsage(userId);

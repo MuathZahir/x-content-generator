@@ -9,11 +9,15 @@ import {
   approvePairing,
   claimPairing,
   resolveToken,
-  revokeToken
+  revokeToken,
+  getDiscoverUsage,
+  bumpDiscover
 } from "./db.js";
 import { getEntitlements, authorizeCall, refundCall, QuotaError, PLANS } from "./quota.js";
-import { generateReplies, generatePost, refineDraft, extractProduct } from "./openai.js";
+import { generateReplies, generatePost, refineDraft, extractProduct, curateDiscoveries } from "./openai.js";
 import { fetchPageText } from "./fetchPage.js";
+import { searchX, enrichTweets, selectDiscoveries } from "./socialcrawl.js";
+import { buildDiscoverQuery } from "./prompts.js";
 import {
   landingPage,
   connectPage,
@@ -163,7 +167,9 @@ app.get("/upgrade", (c) => c.html(upgradePage()));
 app.get("/success", (c) => c.html(successPage()));
 app.get("/privacy", (c) => c.html(privacyPage()));
 app.get("/terms", (c) => c.html(termsPage()));
-app.get("/healthz", (c) => c.json({ ok: true }));
+// `build` is a manual marker bumped per deploy so a deploy can be confirmed live
+// without an authenticated call.
+app.get("/healthz", (c) => c.json({ ok: true, build: "cost-caps-discover15-1" }));
 
 // --- Better Auth (Google sign-in, Polar checkout/portal/webhooks) ---------------
 
@@ -254,7 +260,9 @@ const LIMITS = {
   trends: 10,
   history: 12,
   extractUrl: 2_000,
-  extractText: 8_000
+  extractText: 8_000,
+  discoverLookbackMax: 90,
+  discoverLookbackDefault: 14
 };
 
 function clip(value, max) {
@@ -305,7 +313,7 @@ async function handleGeneration(c, kind, run) {
   }
 
   try {
-    const result = await run(body, grant);
+    const result = await run(body, grant, { userId, route: c.req.path });
     return c.json(result);
   } catch (error) {
     // The reservation in authorizeCall already counted this call. The user got
@@ -320,19 +328,20 @@ async function handleGeneration(c, kind, run) {
 }
 
 app.post("/v1/generate", (c) =>
-  handleGeneration(c, "generate", (body, grant) =>
+  handleGeneration(c, "generate", (body, grant, meta) =>
     generateReplies({
       note: clip(body.note, LIMITS.note),
       threadText: clip(body.threadText, LIMITS.threadText),
       images: body.images,
       profile: readProfile(body),
-      model: grant.model
+      model: grant.model,
+      meta
     })
   )
 );
 
 app.post("/v1/compose", (c) =>
-  handleGeneration(c, "compose", (body, grant) => {
+  handleGeneration(c, "compose", (body, grant, meta) => {
     const product = body.product && typeof body.product === "object"
       ? {
           name: clip(body.product.name, 200),
@@ -351,13 +360,14 @@ app.post("/v1/compose", (c) =>
       profile: readProfile(body),
       feedGrounding: body.feedGrounding !== false,
       model: grant.model,
-      webSearch: grant.webSearch
+      webSearch: grant.webSearch,
+      meta
     });
   })
 );
 
 app.post("/v1/refine", (c) =>
-  handleGeneration(c, "refine", (body, grant) =>
+  handleGeneration(c, "refine", (body, grant, meta) =>
     refineDraft({
       kind: body.kind === "post" ? "post" : "reply",
       currentText: clip(body.currentText, LIMITS.currentText),
@@ -366,7 +376,8 @@ app.post("/v1/refine", (c) =>
       images: body.images,
       history: (Array.isArray(body.history) ? body.history : []).slice(-LIMITS.history),
       profile: readProfile(body),
-      model: grant.model
+      model: grant.model,
+      meta
     })
   )
 );
@@ -432,7 +443,7 @@ app.post("/v1/extract", async (c) => {
   }
 
   try {
-    const product = await extractProduct({ source, model: "gpt-5.4-mini" });
+    const product = await extractProduct({ source, model: "gpt-5.4-mini", meta: { userId, route: c.req.path } });
     return c.json({
       product: {
         name: clip(product.name, 200),
@@ -448,6 +459,128 @@ app.post("/v1/extract", async (c) => {
     const code = error.code || "extract_failed";
     const status = code === "rate_limited" ? 429 : code === "model_unavailable" ? 503 : 502;
     return apiError(c, status, code, error.message || "Extraction failed.");
+  }
+});
+
+// Finds X posts worth replying to about one of the maker's products. Pro-only,
+// counts against the daily allowance like a generation, and refunded whenever
+// no draft of value is produced (search down, no results, curation failed). The
+// SocialCrawl key lives server-side; the extension never touches it. Results are
+// returned to the panel and never stored — this is a discovery surface, not a
+// monitor or a lead list.
+app.post("/v1/discover", async (c) => {
+  if (process.env.DISABLE_GENERATION === "1") {
+    return apiError(c, 503, "model_unavailable", "Discovery is paused for maintenance. Back shortly.");
+  }
+  const userId = await requireUser(c);
+  if (!userId) return apiError(c, 401, "unauthorized", "Sign in from the extension popup.");
+  if (overBurst(`discover:${userId}`, 6, 60 * 1000)) {
+    return apiError(c, 429, "rate_limited", "Too many searches at once. Give it a few seconds.");
+  }
+
+  let body;
+  try {
+    body = await c.req.json();
+  } catch {
+    return apiError(c, 400, "invalid_request", "Body must be JSON.");
+  }
+
+  const product = body.product && typeof body.product === "object"
+    ? {
+        name: clip(body.product.name, 200),
+        description: clip(body.product.description, 2000),
+        link: clip(body.product.link, 500),
+        mention: clip(body.product.mention, 500)
+      }
+    : null;
+
+  if (!product || !product.name.trim()) {
+    return apiError(c, 400, "invalid_request", "Pick a product to find posts for.");
+  }
+
+  let grant;
+  try {
+    grant = await authorizeCall(userId, {
+      kind: "discover",
+      requestedModel: typeof body.model === "string" ? body.model : "",
+      webSearch: false
+    });
+  } catch (error) {
+    if (error instanceof QuotaError) {
+      const status = error.code === "upgrade_required" || error.code === "free_limit_reached" ? 402 : 429;
+      return apiError(c, status, error.code, error.message);
+    }
+    throw error;
+  }
+
+  // Discover has its own daily ceiling, separate from the call allowance and
+  // NEVER refunded. Each attempt below spends a SocialCrawl credit and a curation
+  // call even when curation returns nothing; the daily-call refund on no-results
+  // (good UX) must not also grant a free retry, or a no-match product could loop
+  // and drain search credits and the shared token pool. This counter is the cap.
+  const plan = PLANS[grant.plan] || PLANS.free;
+  const discoversToday = await getDiscoverUsage(userId);
+  if (discoversToday >= plan.discoverDaily) {
+    await refundCall(userId).catch(() => {});
+    return apiError(c, 429, "rate_limited", "Daily discovery limit reached. It resets at midnight UTC.");
+  }
+  await bumpDiscover(userId);
+
+  const lookbackRaw = Number(body.lookbackDays);
+  const lookbackDays = Number.isFinite(lookbackRaw)
+    ? Math.min(LIMITS.discoverLookbackMax, Math.max(1, Math.floor(lookbackRaw)))
+    : LIMITS.discoverLookbackDefault;
+
+  const query = buildDiscoverQuery(product);
+
+  try {
+    const { answer, sources } = await searchX({ query, lookbackDays });
+    if (!sources.length) {
+      await refundCall(userId).catch(() => {});
+      return apiError(c, 422, "no_results", "No recent posts matched this product. Try a broader product description or check back later.");
+    }
+
+    // Curation only ranks/explains posts the search already returned, so it runs
+    // on the cheap model regardless of plan: ~3x cheaper than the flagship and it
+    // draws from the larger (10M/day) mini token pool instead of the scarce
+    // (1M/day) one the reply/compose paths need.
+    const { candidates } = await curateDiscoveries({
+      product,
+      profile: readProfile(body),
+      answer,
+      sources,
+      model: "gpt-5.4-mini",
+      meta: { userId, route: c.req.path }
+    });
+
+    if (!candidates.length) {
+      await refundCall(userId).catch(() => {});
+      return apiError(c, 422, "no_results", "Found posts, but none were a genuine opening worth replying to. Try again later.");
+    }
+
+    // Enrich the curated pool with live author + engagement (1 credit each,
+    // bounded concurrency), then filter out dead/buried posts, diversify by
+    // author, and rank by real traction down to the handful we show. Enrichment
+    // is best-effort: a post that fails to look up is shown without metrics, not
+    // dropped, so an upstream hiccup can't empty an otherwise good run.
+    const enriched = await enrichTweets(candidates.map((candidate) => candidate.url));
+    const selected = selectDiscoveries(candidates, enriched, { limit: 6 });
+
+    if (!selected.length) {
+      await refundCall(userId).catch(() => {});
+      return apiError(c, 422, "no_results", "Found posts, but none were a genuine opening worth replying to. Try again later.");
+    }
+
+    return c.json({ query, candidates: selected });
+  } catch (error) {
+    await refundCall(userId).catch((refundError) => {
+      console.error(`refund failed for ${userId}: ${refundError.message}`);
+    });
+    const code = error.code || "discover_failed";
+    const status = code === "rate_limited" ? 429
+      : code === "discover_unavailable" || code === "model_unavailable" ? 503
+      : 502;
+    return apiError(c, status, code, error.message || "Discovery failed.");
   }
 });
 
@@ -468,5 +601,6 @@ console.log(JSON.stringify({
   google: Boolean(process.env.GOOGLE_CLIENT_ID),
   polar: Boolean(process.env.POLAR_ACCESS_TOKEN),
   openai: Boolean(process.env.OPENAI_API_KEY),
+  socialcrawl: Boolean(process.env.SOCIALCRAWL_API_KEY),
   plans: Object.keys(PLANS)
 }));

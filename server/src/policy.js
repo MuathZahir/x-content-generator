@@ -56,6 +56,51 @@ export function parseExtractResult(raw) {
   };
 }
 
+// Parses the discovery curation result into a clean candidate list. Each
+// candidate must carry a usable X post URL (the model is told never to invent
+// one); anything without a real x.com/twitter.com status link is dropped rather
+// than shown, so a hallucinated link can never reach the panel.
+export function parseDiscoverResult(raw) {
+  const parsed = JSON.parse(stripJsonFence(raw));
+  if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.candidates)) {
+    throw new Error("Model returned an invalid discovery response.");
+  }
+
+  const seen = new Set();
+  const candidates = [];
+  for (const item of parsed.candidates) {
+    if (!item || typeof item !== "object") continue;
+    const url = String(item.url || "").trim();
+    if (!isStatusUrl(url) || seen.has(url)) continue;
+    seen.add(url);
+    candidates.push({
+      url,
+      handle: String(item.handle || "").trim().slice(0, 40),
+      snippet: String(item.snippet || "").trim().slice(0, 240),
+      why: String(item.why || "").trim().slice(0, 240),
+      angle: String(item.angle || "").trim().slice(0, 240)
+    });
+    // Curate a wider pool than we ultimately show: the route enriches these with
+    // live metrics, then drops dead/buried posts and diversifies down to ~6.
+    if (candidates.length >= 12) break;
+  }
+
+  return { candidates };
+}
+
+// A real X/Twitter post permalink, e.g. https://x.com/user/status/123. Anything
+// else (a profile link, a hallucinated path, a non-X host) is rejected.
+function isStatusUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./i, "").toLowerCase();
+    const onX = host === "x.com" || host === "twitter.com" || host === "mobile.twitter.com";
+    return onX && /\/status\/\d+/.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
 // Hard guard against the em/en dash tell, plus a few mechanical AI artifacts,
 // regardless of what the model returns.
 export function sanitizeReplyText(text) {

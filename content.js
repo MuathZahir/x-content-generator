@@ -11,9 +11,11 @@ const state = {
   dismissed: false,
   activeComposer: null,
   lastContext: null,
+  tab: "assist",
   view: "reply",
   composeMode: "grow",
-  draft: null
+  draft: null,
+  discover: null
 };
 
 function findComposer(node) {
@@ -269,6 +271,13 @@ function sendRefine({ kind, currentText, instruction, baseContext, images, histo
   );
 }
 
+function sendDiscover({ productId }) {
+  return sendToBackground(
+    { type: "pennai.discover", productId },
+    "Could not find posts right now."
+  );
+}
+
 // --- Panel rendering --------------------------------------------------------
 
 function showMessage(output, text, className = "pennai-error") {
@@ -320,9 +329,38 @@ function describeContext(context) {
   return `${postLabel}${imageLabel}`;
 }
 
+// Top-level tabs. "assist" is the existing reply/compose/iterate flow (it still
+// auto-switches with the composer context); "discover" is the standalone
+// find-posts surface, which is not tied to any composer.
+function setTab(tab) {
+  if (!state.els) return;
+  state.tab = tab;
+  const { assistNav, discoverNav, discoverGroup, replyingTo } = state.els;
+  assistNav.classList.toggle("pennai-tab-active", tab === "assist");
+  discoverNav.classList.toggle("pennai-tab-active", tab === "discover");
+  discoverGroup.classList.toggle("pennai-hidden", tab !== "discover");
+  replyingTo.classList.toggle("pennai-hidden", tab !== "assist");
+
+  if (tab === "assist") {
+    // Restore whichever assist view was active before the user left.
+    setView(state.draft ? "iterate" : state.view);
+  } else {
+    // Hide every assist group; setView is short-circuited while we're away.
+    const { replyGroup, composeGroup, iterateGroup, output } = state.els;
+    replyGroup.classList.toggle("pennai-hidden", true);
+    composeGroup.classList.toggle("pennai-hidden", true);
+    iterateGroup.classList.toggle("pennai-hidden", true);
+    output.classList.toggle("pennai-hidden", true);
+    enterDiscover();
+  }
+}
+
 function setView(view) {
   if (!state.els) return;
   state.view = view;
+  // While the Discover tab is open it owns panel visibility; just remember the
+  // intended assist view so switching back restores it.
+  if (state.tab !== "assist") return;
   const { replyGroup, composeGroup, iterateGroup, output, replyingTo } = state.els;
   replyGroup.classList.toggle("pennai-hidden", view !== "reply");
   composeGroup.classList.toggle("pennai-hidden", view !== "compose");
@@ -355,8 +393,7 @@ function setComposeMode(mode) {
   if (mode === "promote") populateProducts();
 }
 
-async function populateProducts() {
-  const select = state.els?.productSelect;
+async function populateProducts(select = state.els?.productSelect) {
   if (!select) return;
 
   let products = [];
@@ -573,6 +610,360 @@ async function composeDrafts() {
   }
 }
 
+// --- Discover view ----------------------------------------------------------
+
+// Discover results are persisted so they survive navigation and new tabs: when
+// you open a post (which lands you on a fresh page/tab), the list is still there
+// when you come back to the Discover tab. State lives in chrome.storage.local
+// (not just memory), and expires so the panel never shows a stale list forever.
+const DISCOVER_KEY = "discoverState";
+const DISCOVER_TTL_MS = 60 * 60 * 1000;
+
+// When the user clicks "Open post", we drop this short-lived signal so the page
+// that lands on that tweet (new tab or same-tab navigation) auto-opens Assist
+// and starts generating replies. Keyed to the post's status id so only the
+// right page consumes it, and it expires fast so a stale signal never fires.
+const AUTO_SUGGEST_KEY = "autoSuggest";
+const AUTO_SUGGEST_TTL_MS = 2 * 60 * 1000;
+
+function statusIdFromUrl(url) {
+  try {
+    const match = new URL(url, "https://x.com").pathname.match(/\/status\/(\d+)/);
+    return match ? match[1] : "";
+  } catch (error) {
+    return "";
+  }
+}
+
+async function loadDiscover() {
+  try {
+    const stored = await chrome.storage.local.get({ [DISCOVER_KEY]: null });
+    const saved = stored[DISCOVER_KEY];
+    if (!saved || !saved.ts || Date.now() - saved.ts > DISCOVER_TTL_MS) return null;
+    return saved;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function persistDiscover() {
+  if (!state.discover) return;
+  const { productId, query, candidates, opened } = state.discover;
+  try {
+    await chrome.storage.local.set({
+      [DISCOVER_KEY]: { productId, query, candidates, opened: [...opened], ts: Date.now() }
+    });
+  } catch (error) {
+    // Persistence is best-effort; an in-memory list still works for this tab.
+  }
+}
+
+function openPost(url) {
+  // Signal the destination page (new tab or same-tab nav) to auto-open Assist
+  // and start generating replies for this exact post. Set before navigating so
+  // it is already in storage when the target page's content script boots.
+  const statusId = statusIdFromUrl(url);
+  if (statusId) {
+    chrome.storage.local
+      .set({ [AUTO_SUGGEST_KEY]: { statusId, ts: Date.now() } })
+      .catch(() => {});
+  }
+
+  // A user click is a real gesture, so the new tab is not popup-blocked. We
+  // never open a composer or submit anything on their behalf; the destination
+  // page only drafts reply options the user still edits and posts manually.
+  window.open(url, "_blank", "noopener");
+  if (state.discover) {
+    state.discover.opened.add(url);
+    persistDiscover();
+  }
+}
+
+// Compact engagement counts, X-style: 1.2K, 18.4K, 1.1M. Returns "" for unknown
+// (a post we couldn't enrich) so the stat is simply omitted rather than shown 0.
+function formatCount(value) {
+  if (value == null || !Number.isFinite(Number(value))) return "";
+  const n = Number(value);
+  if (n < 1000) return String(n);
+  if (n < 1e6) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}K`;
+  return `${(n / 1e6).toFixed(1).replace(/\.0$/, "")}M`;
+}
+
+// Relative age for a post timestamp (ISO string or Unix epoch, seconds or ms).
+// Short like X: 3h, 2d. Falls back to a month/day label past a week, "" if absent.
+function relativeTime(value) {
+  if (value == null) return "";
+  let ms;
+  if (typeof value === "number") ms = value < 1e12 ? value * 1000 : value;
+  else ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return "";
+  const diff = Date.now() - ms;
+  if (diff < 0) return "now";
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  try {
+    return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  } catch {
+    return `${days}d`;
+  }
+}
+
+// Inline 16px glyphs for the engagement row. Kept as SVG (not emoji) so they sit
+// on the baseline and inherit the muted text color like X's own metric row.
+const STAT_ICON_PATHS = {
+  like: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z",
+  reply: "M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z",
+  views: "M3 13h2v8H3zM10 8h2v13h-2zM17 4h2v17h-2z"
+};
+
+function statIcon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.classList.add("pennai-stat-icon");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", STAT_ICON_PATHS[name] || "");
+  path.setAttribute("fill", "currentColor");
+  svg.appendChild(path);
+  return svg;
+}
+
+function statChip(name, value, label) {
+  const text = formatCount(value);
+  if (!text) return null;
+  const chip = document.createElement("span");
+  chip.className = "pennai-stat";
+  chip.setAttribute("aria-label", `${value} ${label}`);
+  chip.appendChild(statIcon(name));
+  const count = document.createElement("span");
+  count.textContent = text;
+  chip.appendChild(count);
+  return chip;
+}
+
+// Avatar: the author's photo when we have one, else a colored monogram. The
+// <img> swaps itself out for the monogram on load failure so a dead image URL
+// never shows a broken-image glyph in the panel.
+function renderAvatar(candidate) {
+  const wrap = document.createElement("div");
+  wrap.className = "pennai-avatar";
+
+  const seed = candidate.authorName || candidate.handle || "?";
+  const initial = seed.replace(/^@/, "").trim().charAt(0).toUpperCase() || "?";
+  const mono = document.createElement("span");
+  mono.className = "pennai-avatar-mono";
+  mono.textContent = initial;
+  wrap.appendChild(mono);
+
+  if (candidate.avatar) {
+    const img = document.createElement("img");
+    img.className = "pennai-avatar-img";
+    img.alt = "";
+    img.referrerPolicy = "no-referrer";
+    img.addEventListener("error", () => img.remove());
+    img.src = candidate.avatar;
+    wrap.appendChild(img);
+  }
+  return wrap;
+}
+
+function renderCandidate(container, candidate) {
+  const opened = state.discover?.opened?.has(candidate.url);
+  const card = document.createElement("div");
+  card.className = opened ? "pennai-card pennai-card-visited" : "pennai-card";
+
+  // --- Author header: avatar, name + verified, @handle, post age ---
+  const header = document.createElement("div");
+  header.className = "pennai-card-head";
+  header.appendChild(renderAvatar(candidate));
+
+  const ident = document.createElement("div");
+  ident.className = "pennai-card-ident";
+
+  const nameRow = document.createElement("div");
+  nameRow.className = "pennai-card-namerow";
+  const name = document.createElement("span");
+  name.className = "pennai-card-name";
+  name.textContent = candidate.authorName || candidate.handle || "Unknown";
+  nameRow.appendChild(name);
+  if (candidate.verified) {
+    const badge = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    badge.setAttribute("viewBox", "0 0 24 24");
+    badge.setAttribute("aria-label", "Verified");
+    badge.classList.add("pennai-verified");
+    const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p.setAttribute("fill", "currentColor");
+    p.setAttribute("d", "M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.998-3.818-3.998-.47 0-.92.084-1.336.25C14.818 2.415 13.51 1.5 12 1.5s-2.816.917-3.437 2.25c-.415-.165-.866-.25-1.336-.25-2.11 0-3.818 1.79-3.818 4 0 .494.083.964.237 1.4-1.272.65-2.147 2.018-2.147 3.6 0 1.495.782 2.798 1.942 3.486-.02.16-.032.322-.032.487 0 2.21 1.708 4 3.818 4 .47 0 .92-.086 1.335-.25.62 1.334 1.926 2.25 3.437 2.25 1.512 0 2.818-.916 3.437-2.25.415.163.865.248 1.336.248 2.11 0 3.818-1.79 3.818-4 0-.164-.012-.326-.032-.485 1.16-.688 1.943-1.99 1.943-3.487zM9.91 16.41l-3.41-3.41 1.41-1.41 2 2 4.59-4.59 1.41 1.41-6 6z");
+    badge.appendChild(p);
+    nameRow.appendChild(badge);
+  }
+  ident.appendChild(nameRow);
+
+  const metaRow = document.createElement("div");
+  metaRow.className = "pennai-card-meta";
+  if (candidate.handle) {
+    const handle = document.createElement("span");
+    handle.className = "pennai-card-handle";
+    handle.textContent = candidate.handle;
+    metaRow.appendChild(handle);
+  }
+  const age = relativeTime(candidate.postedAt);
+  if (age) {
+    if (candidate.handle) {
+      const dot = document.createElement("span");
+      dot.className = "pennai-card-dot";
+      dot.textContent = "·";
+      metaRow.appendChild(dot);
+    }
+    const when = document.createElement("span");
+    when.textContent = age;
+    metaRow.appendChild(when);
+  }
+  if (metaRow.childElementCount) ident.appendChild(metaRow);
+  header.appendChild(ident);
+  card.appendChild(header);
+
+  // --- The post itself ---
+  const snippet = document.createElement("div");
+  snippet.className = "pennai-card-snippet";
+  snippet.textContent = candidate.snippet || "";
+  card.appendChild(snippet);
+
+  // --- Engagement row (omitted entirely when nothing was enriched) ---
+  const stats = document.createElement("div");
+  stats.className = "pennai-card-stats";
+  const chips = [
+    statChip("reply", candidate.replies, "replies"),
+    statChip("like", candidate.likes, "likes"),
+    statChip("views", candidate.views, "views")
+  ].filter(Boolean);
+  if (chips.length) {
+    for (const chip of chips) stats.appendChild(chip);
+    card.appendChild(stats);
+  }
+
+  // --- Why this post + how to approach it ---
+  if (candidate.why) {
+    const why = document.createElement("div");
+    why.className = "pennai-card-why";
+    why.textContent = candidate.why;
+    card.appendChild(why);
+  }
+
+  if (candidate.angle) {
+    const angle = document.createElement("div");
+    angle.className = "pennai-card-angle";
+    const tag = document.createElement("span");
+    tag.className = "pennai-card-angle-tag";
+    tag.textContent = "Angle";
+    angle.appendChild(tag);
+    angle.appendChild(document.createTextNode(candidate.angle));
+    card.appendChild(angle);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "pennai-card-actions";
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "pennai-ghost";
+  open.textContent = opened ? "Opened ✓ · open again" : "Open post";
+  open.addEventListener("click", () => {
+    openPost(candidate.url);
+    card.classList.add("pennai-card-visited");
+    open.textContent = "Opened ✓ · open again";
+  });
+  actions.appendChild(open);
+  card.appendChild(actions);
+
+  container.appendChild(card);
+}
+
+// Renders the current in-memory Discover list (state.discover) into the panel.
+function renderDiscoverList() {
+  if (!state.els || !state.discover) return;
+  const { discoverOutput } = state.els;
+  discoverOutput.textContent = "";
+
+  const hint = document.createElement("div");
+  hint.className = "pennai-card-hint";
+  hint.textContent = "Open a post, then reply in your own words. Penn AI helps once you're there.";
+  discoverOutput.appendChild(hint);
+
+  for (const candidate of state.discover.candidates) {
+    renderCandidate(discoverOutput, candidate);
+  }
+}
+
+// Called when the Discover tab is opened. Repopulates the product picker, then
+// restores the last saved list (if any, and not expired) so the user can keep
+// working through it after opening posts.
+async function enterDiscover() {
+  if (!state.els) return;
+  await populateProducts(state.els.discoverProduct);
+
+  if (!state.discover) {
+    const saved = await loadDiscover();
+    if (saved) {
+      state.discover = {
+        productId: saved.productId,
+        query: saved.query,
+        candidates: Array.isArray(saved.candidates) ? saved.candidates : [],
+        opened: new Set(Array.isArray(saved.opened) ? saved.opened : [])
+      };
+    }
+  }
+
+  // Don't clobber a fresh search the user is already looking at in this tab.
+  if (state.tab !== "discover") return;
+  if (state.discover) {
+    if (state.discover.productId) state.els.discoverProduct.value = state.discover.productId;
+    if (!state.els.discoverOutput.childElementCount) renderDiscoverList();
+  }
+}
+
+async function runDiscover() {
+  if (!state.els) return;
+  const { discoverProduct, discoverFind, discoverOutput } = state.els;
+  const productId = discoverProduct.value;
+
+  discoverOutput.textContent = "";
+  if (!productId) {
+    showMessage(discoverOutput, "Create a product in Settings first, then pick it here.");
+    return;
+  }
+
+  discoverFind.disabled = true;
+  discoverFind.classList.toggle("pennai-loading", true);
+  discoverFind.textContent = "Searching…";
+
+  try {
+    const result = await sendDiscover({ productId });
+    if (!result.candidates?.length) {
+      showMessage(discoverOutput, "No posts worth replying to right now. Try again later.");
+      return;
+    }
+    state.discover = {
+      productId,
+      query: result.query || "",
+      candidates: result.candidates,
+      opened: new Set()
+    };
+    persistDiscover();
+    renderDiscoverList();
+  } catch (error) {
+    showGenerationError(discoverOutput, error);
+  } finally {
+    discoverFind.disabled = false;
+    discoverFind.classList.toggle("pennai-loading", false);
+    discoverFind.textContent = "Find posts";
+  }
+}
+
 // --- Iterate view -----------------------------------------------------------
 
 function updateDraftCount() {
@@ -672,6 +1063,21 @@ function ensurePanel() {
 
   header.append(brand, dismiss);
   panel.appendChild(header);
+
+  // Top-level tabs: Assist (reply/compose) and Discover (find posts).
+  const nav = document.createElement("div");
+  nav.className = "pennai-nav";
+  nav.setAttribute("role", "tablist");
+  const assistNav = document.createElement("button");
+  assistNav.type = "button";
+  assistNav.className = "pennai-tab pennai-tab-active";
+  assistNav.textContent = "Assist";
+  const discoverNav = document.createElement("button");
+  discoverNav.type = "button";
+  discoverNav.className = "pennai-tab";
+  discoverNav.textContent = "Discover";
+  nav.append(assistNav, discoverNav);
+  panel.appendChild(nav);
 
   const replyingTo = document.createElement("div");
   replyingTo.className = "pennai-replyingto";
@@ -806,6 +1212,32 @@ function ensurePanel() {
 
   panel.appendChild(iterateGroup);
 
+  // --- Discover group (find X posts to reply to about a product) ---
+  const discoverGroup = document.createElement("div");
+  discoverGroup.className = "pennai-discover pennai-hidden";
+
+  const discoverIntro = document.createElement("div");
+  discoverIntro.className = "pennai-discover-intro";
+  discoverIntro.textContent = "Find recent X posts where one of your products is a genuine, helpful answer.";
+  discoverGroup.appendChild(discoverIntro);
+
+  const discoverProduct = document.createElement("select");
+  discoverProduct.className = "pennai-product";
+  discoverProduct.setAttribute("aria-label", "Product to find posts for");
+  discoverGroup.appendChild(discoverProduct);
+
+  const discoverFind = document.createElement("button");
+  discoverFind.type = "button";
+  discoverFind.className = "pennai-suggest";
+  discoverFind.textContent = "Find posts";
+  discoverGroup.appendChild(discoverFind);
+
+  const discoverOutput = document.createElement("div");
+  discoverOutput.className = "pennai-output";
+  discoverGroup.appendChild(discoverOutput);
+
+  panel.appendChild(discoverGroup);
+
   // --- Shared output ---
   const output = document.createElement("div");
   output.className = "pennai-output";
@@ -816,8 +1248,10 @@ function ensurePanel() {
   state.panel = panel;
   state.els = {
     panel, replyingTo,
+    assistNav, discoverNav,
     replyGroup, note, suggest, preview: pre, contextSummary,
     composeGroup, growTab, promoteTab, productSelect, idea, write,
+    discoverGroup, discoverProduct, discoverFind, discoverOutput,
     iterateGroup, draftText, draftCount, instruction, refine, insertDraft, copyDraft, back, iterateError,
     output
   };
@@ -841,10 +1275,17 @@ function ensurePanel() {
     }
   });
 
+  // Top-level tab switching
+  assistNav.addEventListener("click", () => setTab("assist"));
+  discoverNav.addEventListener("click", () => setTab("discover"));
+
   // Compose view
   growTab.addEventListener("click", () => setComposeMode("grow"));
   promoteTab.addEventListener("click", () => setComposeMode("promote"));
   write.addEventListener("click", composeDrafts);
+
+  // Discover view
+  discoverFind.addEventListener("click", runDiscover);
 
   // Iterate view
   draftText.addEventListener("input", updateDraftCount);
@@ -979,7 +1420,67 @@ function hidePanel() {
   hideBubble();
 }
 
+// "Open post" auto-suggest. The signal is mirrored in memory (seeded once at
+// load, then kept current via storage.onChanged) so the scan loop can check it
+// every mutation without hitting storage. It fires once per signal, so repeated
+// opens in the same tab each trigger a fresh run.
+let autoSuggestSignal = null;
+let autoSuggestLastHandled = "";
+
+if (chrome.storage?.local?.get) {
+  chrome.storage.local
+    .get({ [AUTO_SUGGEST_KEY]: null })
+    .then((stored) => { autoSuggestSignal = stored[AUTO_SUGGEST_KEY] || null; })
+    .catch(() => {});
+}
+if (chrome.storage?.onChanged) {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && AUTO_SUGGEST_KEY in changes) {
+      autoSuggestSignal = changes[AUTO_SUGGEST_KEY].newValue || null;
+    }
+  });
+}
+
+function consumeAutoSuggest(key) {
+  autoSuggestLastHandled = key;
+  autoSuggestSignal = null;
+  chrome.storage.local.set({ [AUTO_SUGGEST_KEY]: null }).catch(() => {});
+}
+
+function checkAutoSuggest() {
+  const signal = autoSuggestSignal;
+  if (!signal || !signal.statusId || !signal.ts) return;
+
+  const key = `${signal.statusId}:${signal.ts}`;
+  if (key === autoSuggestLastHandled) return; // already handled this signal
+  if (Date.now() - signal.ts > AUTO_SUGGEST_TTL_MS) {
+    consumeAutoSuggest(key);
+    return;
+  }
+
+  // Only the page actually on that post consumes the signal.
+  if (statusIdFromUrl(location.href) !== signal.statusId) return;
+
+  const composer =
+    (document.activeElement ? findComposer(document.activeElement) : null) ||
+    getAllComposers().at(-1);
+  if (!composer) return; // reply box not in the DOM yet; retry on next scan
+
+  const context = getThreadContext(composer);
+  if (!context.posts.length) return; // thread still loading; retry on next scan
+
+  // Ready. Consume so it fires exactly once, then run the Assist reply flow.
+  consumeAutoSuggest(key);
+  state.dismissed = false;
+  showPanel();
+  setTab("assist");
+  setActiveComposer(composer);
+  requestSuggestions({ context });
+}
+
 function scan() {
+  checkAutoSuggest();
+
   const composers = getAllComposers();
   if (composers.length === 0) {
     hidePanel();
@@ -1003,6 +1504,9 @@ document.addEventListener("focusin", (event) => {
   const composer = findComposer(target);
   if (composer) {
     showPanel();
+    // Don't yank the user off the Discover tab just because a composer (e.g. the
+    // reply box X auto-focuses on a post page) gained focus. They switch tabs
+    // themselves; the explicit Alt+Shift+R shortcut still forces Assist.
     setActiveComposer(composer);
   }
 });
@@ -1018,6 +1522,8 @@ chrome.runtime.onMessage.addListener((message) => {
   // dismissal.
   state.dismissed = false;
   showPanel();
+  // The shortcut is a reply action, so make sure we're on the Assist tab.
+  if (state.tab !== "assist") setTab("assist");
   setActiveComposer(composer);
 
   // The shortcut is a reply-surface action; if we're on a compose box it just

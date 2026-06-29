@@ -382,7 +382,7 @@ export function landingPage() {
       <h3>Pro</h3>
       <p class="price"><b>$9</b> / month · <b>$79</b> / year</p>
       <ul>
-        <li>400 generations a day, best model (gpt-5.4)</li>
+        <li>100 generations a day, best model (gpt-5.4)</li>
         <li>Write original posts grounded in your live feed</li>
         <li>Promote your products like a builder, never an ad</li>
         <li>Web search for posts about current events</li>
@@ -502,7 +502,7 @@ export function upgradePage() {
     <h3>Pro</h3>
     <p class="price"><b>$9</b> / month · <b>$79</b> / year</p>
     <ul>
-      <li>400 generations a day on gpt-5.4</li>
+      <li>100 generations a day on gpt-5.4</li>
       <li>Original posts grounded in your live feed</li>
       <li>Product promotion drafts</li>
       <li>Web search + model choice + refine chat</li>
